@@ -5,6 +5,7 @@ package hxd.res;
 	var Jpg = 0;
 	var Png = 1;
 	var Gif = 2;
+  var Tim = 3;
 
 	/*
 		Tells if we might not be able to directly decode the image without going through a loadBitmap async call.
@@ -89,6 +90,13 @@ class Image extends Resource {
 			width = f.readUInt16();
 			height = f.readUInt16();
 
+		case 0x0010: // TIM
+			format = Tim;
+      f.readInt16(); // skip format information
+      var size = format.tim.Tools.getImageSize(f);
+      width = size.width;
+      height = size.height;
+      
 		default:
 			throw "Unsupported texture format " + entry.path;
 		}
