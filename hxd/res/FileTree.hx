@@ -376,7 +376,7 @@ class FileTree {
 	function handleFile( file : String, ext : String, relPath : String, fullPath : String ) : FileEntry {
 		var epath = { expr : EConst(CString(relPath)), pos : pos };
 		switch( ext.toLowerCase() ) {
-		case "jpg", "png", "jpeg", "gif":
+		case "jpg", "png", "jpeg", "gif", "tim":
 			return { e : macro loader.loadImage($epath), t : macro : hxd.res.Image };
 		case "fbx", "hmd":
 			return { e : macro loader.loadModel($epath), t : macro : hxd.res.Model };

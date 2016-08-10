@@ -92,11 +92,20 @@ class Image extends Resource {
 
 		case 0x0010: // TIM
 			format = Tim;
-      f.readInt16(); // skip format information
-      var size = format.tim.Tools.getImageSize(f);
-      width = size.width;
-      height = size.height;
-      
+      f.readInt16(); // skip two more bytes of format
+      var type = f.readInt32();
+      if(type ==  0x08 || type == 0x09) // Paletted_4_BPP and Paletted_8_BPP
+      {
+        var clutSize = f.readInt32();
+        f.skip(clutSize-4); // skip all the clut information
+      }
+      f.skip(8); // skip image size, imageOrgX, imageOrgY
+      width = f.readUInt16();
+      height = f.readUInt16();
+      if(type ==  0x08)
+        width *= 4;
+      if(type == 0x09)
+      width *= 2;
 		default:
 			throw "Unsupported texture format " + entry.path;
 		}
@@ -148,6 +157,10 @@ class Image extends Resource {
 			var p = NanoJpeg.decode(bytes);
 			pixels = new Pixels(p.width, p.height, p.pixels, BGRA);
 			#end
+		case Tim:
+			var bytes = entry.getBytes();
+			var tim = new format.tim.Reader(new haxe.io.BytesInput(bytes)).read();
+      pixels = new Pixels(inf.width, inf.height, format.tim.Tools.extractFullBGRA(tim), BGRA);
 		}
 		if( fmt != null ) pixels.convert(fmt);
 		if( flipY != null ) pixels.setFlip(flipY);
