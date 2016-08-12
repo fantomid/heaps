@@ -105,7 +105,7 @@ class Image extends Resource {
       if(type ==  0x08)
         width *= 4;
       if(type == 0x09)
-      width *= 2;
+        width *= 2;
 		default:
 			throw "Unsupported texture format " + entry.path;
 		}
