@@ -159,8 +159,8 @@ class Image extends Resource {
 			#end
 		case Tim:
 			var bytes = entry.getBytes();
-			var tim = new format.tim.Reader(new haxe.io.BytesInput(bytes)).read();
-      pixels = new Pixels(inf.width, inf.height, format.tim.Tools.extractFullBGRA(tim), BGRA);
+			var tim = new format.psx.tim.Reader(new haxe.io.BytesInput(bytes)).read();
+      pixels = new Pixels(inf.width, inf.height, format.psx.tim.Tools.extractFullBGRA(tim), BGRA);
 		}
 		if( fmt != null ) pixels.convert(fmt);
 		if( flipY != null ) pixels.setFlip(flipY);
