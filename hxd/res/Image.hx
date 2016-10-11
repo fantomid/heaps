@@ -123,7 +123,7 @@ class Image extends Resource {
 
 			#if (lime && (cpp || neko || nodejs))
 			// native PNG loader is faster
-			var i = lime.graphics.format.PNG.decodeBytes( bytes, true );
+			var i = lime.graphics.Image.fromBytes( bytes );
 			pixels = new Pixels(inf.width, inf.height, i.data.toBytes(), RGBA );
 			#else
 			var png = new format.png.Reader(new haxe.io.BytesInput(bytes));
@@ -151,7 +151,7 @@ class Image extends Resource {
 			var bytes = entry.getBytes();
 			#if hl
 			if( fmt == null ) fmt = BGRA;
-			pixels = hxd.impl.FmtSupport.decodeJPG(bytes, inf.width, inf.height, fmt, flipY);
+			pixels = decodeJPG(bytes, inf.width, inf.height, fmt, flipY);
 			if( pixels == null ) throw "Failed to decode JPG " + entry.path;
 			#else
 			var p = NanoJpeg.decode(bytes);
@@ -166,6 +166,28 @@ class Image extends Resource {
 		if( flipY != null ) pixels.setFlip(flipY);
 		return pixels;
 	}
+	
+	#if hl
+	static function decodeJPG( src : haxe.io.Bytes, width : Int, height : Int, fmt : hxd.PixelFormat, flipY : Bool ) {
+		var ifmt : hl.Format.PixelFormat = switch( fmt ) {
+		case RGBA: RGBA;
+		case BGRA: BGRA;
+		case ARGB: ARGB;
+		default:
+			fmt = BGRA;
+			BGRA;
+		};
+		var dst = hxd.impl.Tmp.getBytes(width * height * 4);
+		if( !hl.Format.decodeJPG(src.getData(), src.length, dst.getData(), width, height, width * 4, ifmt, (flipY?1:0)) ) {
+			hxd.impl.Tmp.saveBytes(dst);
+			return null;
+		}
+		var pix = new hxd.Pixels(width, height, dst, fmt);
+		if( flipY ) pix.flags.set(FlipY);
+		pix.convert(fmt);
+		return pix;
+	}
+	#end
 
 	public function toBitmap() : hxd.BitmapData {
 		getSize();

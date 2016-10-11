@@ -37,18 +37,19 @@ abstract PixelsARGB(Pixels) to Pixels {
 @:noDebug
 class Pixels {
 	public var bytes : haxe.io.Bytes;
-	public var format(default,set) : PixelFormat;
+	public var format(get,never) : PixelFormat;
 	public var width : Int;
 	public var height : Int;
 	public var offset : Int;
 	public var flags: haxe.EnumFlags<Flags>;
 	var bpp : Int;
+	var innerFormat(default, set) : PixelFormat;
 
 	public function new(width : Int, height : Int, bytes : haxe.io.Bytes, format : hxd.PixelFormat, offset = 0) {
 		this.width = width;
 		this.height = height;
 		this.bytes = bytes;
-		this.format = format;
+		this.innerFormat = format;
 		this.offset = offset;
 	}
 
@@ -60,8 +61,10 @@ class Pixels {
 		return (v & 0xFF00FF00) | ((v << 16) & 0xFF0000) | ((v >> 16) & 0xFF);
 	}
 
-	function set_format(fmt) {
-		this.format = fmt;
+	inline function get_format() return innerFormat;
+
+	function set_innerFormat(fmt) {
+		this.innerFormat = fmt;
 		bpp = bytesPerPixel(fmt);
 		return fmt;
 	}
@@ -260,7 +263,7 @@ class Pixels {
 			}
 			mem.end();
 
-		case [ARGB, RGBA]: {
+		case [ARGB, RGBA]:
 			var mem = hxd.impl.Memory.select(bytes);
 			for ( i in 0...width * height ) {
 				var p = (i << 2) + offset;
@@ -272,12 +275,24 @@ class Pixels {
 				mem.wb(p + 3, a);
 			}
 			mem.end();
-		}
+
+		case [RGBA, ARGB]:
+			var mem = hxd.impl.Memory.select(bytes);
+			for ( i in 0...width * height ) {
+				var p = (i << 2) + offset;
+				var a = (mem.b(p + 3));
+
+				mem.wb(p + 3, mem.b(p + 2));
+				mem.wb(p + 2, mem.b(p + 1));
+				mem.wb(p + 1, mem.b(p));
+				mem.wb(p, a);
+			}
+			mem.end();
 
 		default:
 			throw "Cannot convert from " + format + " to " + target;
 		}
-		format = target;
+		innerFormat = target;
 	}
 
 	public function getPixel(x, y) : Int {

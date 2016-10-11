@@ -48,33 +48,51 @@ abstract Polygon(Array<Point>) from Array<Point> to Array<Point> {
 		return b;
 	}
 
+	//sources : https://fr.wikipedia.org/wiki/Parcours_de_Graham
+	//step by step demonstration : http://www.algomation.com/algorithm/graham-scan-convex-hull
 	public function convexHull() {
 		var len = points.length;
-		if( len < 3 )
-			throw "convexHull() needs at least 3 points";
+		if( points.length < 3 )
+			return points;
 
-		var first = 0;
-		var firstX = points[first].x;
-		for( i in 1...points.length ) {
-			var px = points[i].x;
-			if( px < firstX ) {
-				first = i;
-				firstX = px;
-			}
+		//find lowest y points
+		var p0 = points[0];
+		for( p in points ) {
+			if( p.y < p0.y || (p.y == p0.y && p.x < p0.x) )
+				p0 = p;
 		}
 
-		var hull = [];
-		var curr = first;
-		var next = 0;
-		do {
-			hull.push(points[curr]);
-			next = (curr + 1) % len;
-			for( i in 0...len ) {
-			   if( side(points[i], points[curr], points[next]) < 0 )
-				   next = i;
+		//sort by angle from p0
+		var pts : Array<{p : h2d.col.Point, a : Float}> = [];
+		var p1 = new h2d.col.Point(p0.x + 1e5, p0.y);
+		for(p in points) {
+			if(p.x == p0.x && p.y == p0.y) continue;
+			pts.push({p : p, a : side(p0, p1, p)});
+		}
+		pts.sort(function(pa, pb) return side(p0, pa.p, pb.p) > 0 ? -1 : 1);
+
+		//remove same angle points (includes duplicated points)
+		var index = pts.length - 1;
+		while(index > 0) {
+			var cur = pts[index];
+			var prev = pts[index - 1];
+			if(cur.a == prev.a) {
+				if(Math.distanceSq(cur.p.x - p0.x, cur.p.y - p0.y) < Math.distanceSq(prev.p.x - p0.x, prev.p.y - p0.y))
+					pts.remove(cur);
+				else pts.remove(prev);
 			}
-			curr = next;
-		} while( curr != first );
+			index--;
+		}
+
+		//set hull
+		var hull = [ p0, pts[0].p, pts[1].p ];
+		for (i in 2...pts.length) {
+			var pi = pts[i].p;
+			while (side(hull[hull.length - 2], hull[hull.length - 1], pi) <= 0)
+				hull.pop();
+			hull.push(pi);
+		}
+
 		return hull;
 	}
 

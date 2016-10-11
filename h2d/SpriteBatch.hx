@@ -59,10 +59,8 @@ class BatchElement {
 	}
 
 	public function remove() {
-		if( batch != null ) {
+		if( batch != null )
 			batch.delete(this);
-			batch = null;
-		}
 	}
 
 }
@@ -96,6 +94,7 @@ class SpriteBatch extends Drawable {
 	var first : BatchElement;
 	var last : BatchElement;
 	var tmpBuf : hxd.FloatBuffer;
+	var buffer : h3d.Buffer;
 
 	public function new(t,?parent) {
 		super(parent);
@@ -104,11 +103,13 @@ class SpriteBatch extends Drawable {
 
 	public function add(e:BatchElement) {
 		e.batch = this;
-		if( first == null )
+		if( first == null ) {
 			first = last = e;
-		else {
+			e.prev = e.next = null;
+		} else {
 			last.next = e;
 			e.prev = last;
+			e.next = null;
 			last = e;
 		}
 		return e;
@@ -130,6 +131,7 @@ class SpriteBatch extends Drawable {
 				last = e.prev;
 		} else
 			e.next.prev = e.prev;
+		e.batch = null;
 	}
 
 	override function sync(ctx) {
@@ -142,6 +144,7 @@ class SpriteBatch extends Drawable {
 				e = e.next;
 			}
 		}
+		flush();
 	}
 
 	override function getBoundsRec( relativeTo, out, forSize ) {
@@ -179,7 +182,11 @@ class SpriteBatch extends Drawable {
 		}
 	}
 
-	override function draw( ctx : RenderContext ) {
+	function flush() {
+		if( buffer != null ) {
+			buffer.dispose();
+			buffer = null;
+		}
 		if( first == null )
 			return;
 		if( tmpBuf == null ) tmpBuf = new hxd.FloatBuffer();
@@ -270,10 +277,13 @@ class SpriteBatch extends Drawable {
 			}
 			e = e.next;
 		}
-		var buffer = h3d.Buffer.ofSubFloats(tmpBuf, 8, Std.int(pos/8), [Dynamic, Quads, RawFormat]);
+		buffer = h3d.Buffer.ofSubFloats(tmpBuf, 8, Std.int(pos/8), [Dynamic, Quads, RawFormat]);
+	}
+
+	override function draw( ctx : RenderContext ) {
+		if( first == null || buffer == null || buffer.isDisposed() ) return;
 		ctx.beginDrawObject(this, tile.getTexture());
 		ctx.engine.renderQuadBuffer(buffer);
-		buffer.dispose();
 	}
 
 	public inline function isEmpty() {
@@ -284,4 +294,10 @@ class SpriteBatch extends Drawable {
 		return new ElementsIterator(first);
 	}
 
+	override function onDelete()  {
+		if( buffer != null ) {
+			buffer.dispose();
+			buffer = null;
+		}
+	}
 }
