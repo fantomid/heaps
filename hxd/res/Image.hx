@@ -5,7 +5,7 @@ package hxd.res;
 	var Jpg = 0;
 	var Png = 1;
 	var Gif = 2;
-  var Tim = 3;
+	var Tim = 3;
 
 	/*
 		Tells if we might not be able to directly decode the image without going through a loadBitmap async call.
@@ -92,20 +92,20 @@ class Image extends Resource {
 
 		case 0x0010: // TIM
 			format = Tim;
-      f.readInt16(); // skip two more bytes of format
-      var type = f.readInt32();
-      if(type ==  0x08 || type == 0x09) // Paletted_4_BPP and Paletted_8_BPP
-      {
-        var clutSize = f.readInt32();
-        f.skip(clutSize-4); // skip all the clut information
-      }
-      f.skip(8); // skip image size, imageOrgX, imageOrgY
-      width = f.readUInt16();
-      height = f.readUInt16();
-      if(type ==  0x08)
-        width *= 4;
-      if(type == 0x09)
-        width *= 2;
+			f.readInt16(); // skip two more bytes of format
+			var type = f.readInt32();
+			if(type ==  0x08 || type == 0x09) // Paletted_4_BPP and Paletted_8_BPP
+			{
+				var clutSize = f.readInt32();
+				f.skip(clutSize-4); // skip all the clut information
+			}
+			f.skip(8); // skip image size, imageOrgX, imageOrgY
+			width = f.readUInt16();
+			height = f.readUInt16();
+			if(type ==  0x08)
+				width *= 4;
+			if(type == 0x09)
+			width *= 2;
 		default:
 			throw "Unsupported texture format " + entry.path;
 		}
@@ -160,7 +160,7 @@ class Image extends Resource {
 		case Tim:
 			var bytes = entry.getBytes();
 			var tim = new format.psx.tim.Reader(new haxe.io.BytesInput(bytes)).read();
-      pixels = new Pixels(inf.width, inf.height, format.psx.tim.Tools.extractFullBGRA(tim), BGRA);
+			pixels = new Pixels(inf.width, inf.height, format.psx.tim.Tools.extractFullBGRA(tim), BGRA);
 		}
 		if( fmt != null ) pixels.convert(fmt);
 		if( flipY != null ) pixels.setFlip(flipY);
