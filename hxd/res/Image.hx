@@ -2,10 +2,10 @@ package hxd.res;
 
 @:enum abstract ImageFormat(Int) {
 
+	var Ukn = -1;
 	var Jpg = 0;
 	var Png = 1;
 	var Gif = 2;
-	var Tim = 3;
 
 	/*
 		Tells if we might not be able to directly decode the image without going through a loadBitmap async call.
@@ -41,12 +41,23 @@ class Image extends Resource {
 		return inf.format;
 	}
 
+	private function getSizeIsSupported(f : hxd.fs.FileInput, code : Int) : { supported : Bool, width : Int, height : Int, format : ImageFormat } {
+		var notSupported = { supported : false, width : -1, height : -1, format : Ukn };
+		return notSupported;
+	}
+
+	private function getPixelsIsSupported() : { supported : Bool, pixels : hxd.Pixels } {
+		var notSupported = { supported : false, pixels : null };
+		return notSupported;
+	}
+
 	public function getSize() : { width : Int, height : Int } {
 		if( inf != null )
 			return inf;
 		var f = new hxd.fs.FileInput(entry);
 		var width = 0, height = 0, format;
-		switch( f.readUInt16() ) {
+		var code = f.readUInt16(); 
+		switch( code ) {
 		case 0xD8FF: // JPG
 			format = Jpg;
 			f.bigEndian = true;
@@ -90,24 +101,16 @@ class Image extends Resource {
 			width = f.readUInt16();
 			height = f.readUInt16();
 
-		case 0x0010: // TIM
-			format = Tim;
-			f.readInt16(); // skip two more bytes of format
-			var type = f.readInt32();
-			if(type ==  0x08 || type == 0x09) // Paletted_4_BPP and Paletted_8_BPP
-			{
-				var clutSize = f.readInt32();
-				f.skip(clutSize-4); // skip all the clut information
-			}
-			f.skip(8); // skip image size, imageOrgX, imageOrgY
-			width = f.readUInt16();
-			height = f.readUInt16();
-			if(type ==  0x08)
-				width *= 4;
-			if(type == 0x09)
-			width *= 2;
 		default:
-			throw "Unsupported texture format " + entry.path;
+			var unkFormat = getSizeIsSupported(f, code);
+			if(unkFormat.supported == false)
+				throw "Unsupported texture format " + entry.path;
+			else
+			{
+				width = unkFormat.width;
+				height = unkFormat.height;
+				format = unkFormat.format;
+			}
 		}
 		f.close();
 		inf = { width : width, height : height, format : format };
@@ -157,10 +160,14 @@ class Image extends Resource {
 			var p = NanoJpeg.decode(bytes);
 			pixels = new Pixels(p.width, p.height, p.pixels, BGRA);
 			#end
-		case Tim:
-			var bytes = entry.getBytes();
-			var tim = new format.psx.tim.Reader(new haxe.io.BytesInput(bytes)).read();
-			pixels = new Pixels(inf.width, inf.height, format.psx.tim.Tools.extractFullBGRA(tim), BGRA);
+		default:
+			var unkFormat = getPixelsIsSupported();
+			if(unkFormat.supported == false)
+				throw "Failed to decode " + entry.path;
+			else
+			{
+				pixels = unkFormat.pixels;
+			}
 		}
 		if( fmt != null ) pixels.convert(fmt);
 		if( flipY != null ) pixels.setFlip(flipY);
