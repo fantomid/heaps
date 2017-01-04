@@ -101,10 +101,6 @@ class Interactive extends Drawable implements hxd.SceneEvents.Interactive {
 				pt.y = saveY;
 				var pt = p.globalToLocal(pt);
 				if( pt.x < 0 || pt.y < 0 || pt.x > p.width || pt.y > p.height ) {
-					if( e.kind == ERelease ) {
-						mouseDownButton = -1;
-						break;
-					}
 					e.cancel = true;
 					return;
 				}
@@ -116,12 +112,8 @@ class Interactive extends Drawable implements hxd.SceneEvents.Interactive {
 			var dx = (e.relX - cx) / cx;
 			var dy = (e.relY - cy) / cy;
 			if( dx * dx + dy * dy > 1 ) {
-				if( e.kind == ERelease )
-					mouseDownButton = -1;
-				else {
-					e.cancel = true;
-					return;
-				}
+				e.cancel = true;
+				return;
 			}
 		}
 		if( propagateEvents ) e.propagate = true;
@@ -150,7 +142,7 @@ class Interactive extends Drawable implements hxd.SceneEvents.Interactive {
 			mouseDownButton = -1;
 		case EOver:
 			onOver(e);
-			if( !e.cancel )
+			if( !e.cancel && cursor != null )
 				hxd.System.setCursor(cursor);
 		case EOut:
 			mouseDownButton = -1;
@@ -167,12 +159,14 @@ class Interactive extends Drawable implements hxd.SceneEvents.Interactive {
 			onKeyUp(e);
 		case EKeyDown:
 			onKeyDown(e);
+		case ECheck:
+			onCheck(e);
 		}
 	}
 
 	function set_cursor(c) {
 		this.cursor = c;
-		if( isOver() )
+		if( isOver() && cursor != null )
 			hxd.System.setCursor(cursor);
 		return c;
 	}
@@ -266,6 +260,9 @@ class Interactive extends Drawable implements hxd.SceneEvents.Interactive {
 	}
 
 	public dynamic function onKeyDown( e : hxd.Event ) {
+	}
+
+	public dynamic function onCheck( e : hxd.Event ) {
 	}
 
 }

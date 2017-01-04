@@ -399,7 +399,7 @@ class Macros {
 				Context.error("Too many nullable fields", v.pos);
 			var ct = t.t;
 			return macro {
-				var fbits = $ctx.getByte();
+				var fbits = $ctx.getInt();
 				if( fbits == 0 )
 					$v = null;
 				else {
@@ -526,12 +526,14 @@ class Macros {
 				meta : noCompletion,
 				kind : FVar(macro : Int, macro @:privateAccess hxd.net.Serializer.allocUID()),
 			});
+
+		var clName = StringTools.endsWith(cl.module,"."+cl.name) ? cl.module.split(".") : [cl.name];
 		fields.push({
 			name : "__clid",
 			pos : pos,
 			access : [AStatic],
 			meta : noCompletion,
-			kind : FVar(macro : Int, macro @:privateAccess hxd.net.Serializer.registerClass($i{cl.name})),
+			kind : FVar(macro : Int, macro @:privateAccess hxd.net.Serializer.registerClass($p{clName})),
 		});
 		fields.push({
 			name : "getCLID",
@@ -1033,8 +1035,9 @@ class Macros {
 						ret : ftype.t,
 					}),
 				});
-			flushExpr.push(macro if( b & (1 << $v{ bitID } ) != 0 ) hxd.net.Macros.serializeValue(ctx, this.$fname));
-			syncExpr.push(macro if( __bits & (1 << $v { bitID } ) != 0 ) hxd.net.Macros.unserializeValue(ctx, this.$fname));
+			var fexpr = { expr : EField({ expr : EConst(CIdent("this")), pos : pos }, fname), pos : pos };
+			flushExpr.push(macro if( b & (1 << $v{ bitID } ) != 0 ) hxd.net.Macros.serializeValue(ctx, $fexpr));
+			syncExpr.push(macro if( __bits & (1 << $v { bitID } ) != 0 ) hxd.net.Macros.unserializeValue(ctx, $fexpr));
 
 			var prop = "networkProp" + fname.charAt(0).toUpperCase() + fname.substr(1);
 			fields.push({
@@ -1281,6 +1284,8 @@ class Macros {
 					return haxe.macro.ExprTools.map(e, loop);
 				}
 			}
+			if( t.condSend.expr.match(EConst(CIdent("false"))) )
+				return macro {}; // no marking
 			var condSend = loop(t.condSend);
 			needRef = true;
 			mark = macro if( $condSend ) { this.$rname = this.$fname; $mark; };

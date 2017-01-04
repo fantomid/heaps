@@ -77,7 +77,7 @@ class Interactive extends Object implements hxd.SceneEvents.Interactive {
 			mouseDownButton = -1;
 		case EOver:
 			onOver(e);
-			if( !e.cancel )
+			if( !e.cancel && cursor != null )
 				hxd.System.setCursor(cursor);
 		case EOut:
 			mouseDownButton = -1;
@@ -94,12 +94,14 @@ class Interactive extends Object implements hxd.SceneEvents.Interactive {
 			onKeyUp(e);
 		case EKeyDown:
 			onKeyDown(e);
+		case ECheck:
+			onCheck(e);
 		}
 	}
 
 	function set_cursor(c) {
 		this.cursor = c;
-		if( isOver() )
+		if( isOver() && cursor != null )
 			hxd.System.setCursor(cursor);
 		return c;
 	}
@@ -153,6 +155,9 @@ class Interactive extends Object implements hxd.SceneEvents.Interactive {
 	}
 
 	public dynamic function onKeyDown( e : hxd.Event ) {
+	}
+
+	public dynamic function onCheck( e : hxd.Event ) {
 	}
 
 }

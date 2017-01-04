@@ -16,6 +16,7 @@ class BigPrimitive extends Primitive {
 	var bufPos : Int;
 	var idxPos : Int;
 	var startIndex : Int;
+	var flushing : Bool;
 	#if debug
 	var allocPos : h3d.impl.AllocPos;
 	#end
@@ -106,8 +107,6 @@ class BigPrimitive extends Primitive {
 		return count;
 	}
 
-	static var TOTAL = 0;
-
 	/**
 		Flush the current buffer.
 		It is required to call begin() after a flush()
@@ -115,10 +114,12 @@ class BigPrimitive extends Primitive {
 	public function flush() {
 		if( tmpBuf != null ) {
 			if( bufPos > 0 && idxPos > 0 ) {
-				var b = h3d.Buffer.ofSubFloats(tmpBuf, stride, Std.int(bufPos/stride) #if debug ,null,allocPos #end);
+				flushing = true;
+				var b = h3d.Buffer.ofSubFloats(tmpBuf, stride, Std.int(bufPos / stride) #if debug , null, allocPos #end);
 				if( isRaw ) b.flags.set(RawFormat);
 				buffers.push(b);
 				allIndexes.push(h3d.Indexes.alloc(tmpIdx, 0, idxPos));
+				flushing = false;
 			}
 			if( PREV_BUFFER == null || PREV_BUFFER.length < tmpBuf.length )
 				PREV_BUFFER = tmpBuf;
@@ -147,6 +148,10 @@ class BigPrimitive extends Primitive {
 	}
 
 	public function clear() {
+
+		if( flushing )
+			throw "Cannot clear() BigPrimitive while it's flushing";
+
 		bounds.empty();
 		for( b in buffers )
 			b.dispose();
@@ -182,6 +187,10 @@ class BigPrimitive extends Primitive {
 		var sr = Math.sin(rotation);
 		var pos = bufPos;
 		var tmpBuf = tmpBuf;
+		#if hl
+		var buf : hl.BytesAccess<hxd.impl.Float32> = hl.Bytes.getArray(buf.getNative());
+		var tmpBuf : hl.BytesAccess<hxd.impl.Float32> = hl.Bytes.getArray(tmpBuf.getNative());
+		#end
 		for( i in 0...nvert ) {
 			var p = (i + startVert) * stride;
 			var x = buf[p++];

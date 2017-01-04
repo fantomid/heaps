@@ -5,7 +5,6 @@ typedef K = hxd.Key;
 
 typedef Props = {
 	curFile:String,
-	camPos:Campos,
 	smoothing:Bool,
 	showAxis:Bool,
 	showBones:Bool,
@@ -18,24 +17,16 @@ typedef Props = {
 	queueAnims:Bool,
 	treeview:Bool,
 	checker:Bool,
-}
-
-typedef Campos = {
-	x:Float,
-	y:Float,
-	z:Float,
-	tx:Float,
-	ty:Float,
-	tz:Float,
+	materials:Bool,
 }
 
 class Viewer extends hxd.App {
 
 	var obj : h3d.scene.Object;
 	var anim : h3d.anim.Animation;
-	var tf : flash.text.TextField;
-	var tf_keys : flash.text.TextField;
-	var tf_help : flash.text.TextField;
+	var tf : h2d.Text;
+	var tf_keys : h2d.Text;
+	var tf_help : h2d.Text;
 
 	var curFbx : hxd.fmt.fbx.Library;
 	var curHmd : hxd.fmt.hmd.Library;
@@ -47,76 +38,41 @@ class Viewer extends hxd.App {
 	var light : h3d.scene.DirLight;
 	var rightHand : Bool;
 	var playAnim : Bool;
-	var rightClick : Bool;
-	var freeMove : Bool;
-	var pMouse : h2d.col.Point;
 	var axis : h3d.scene.Graphics;
 	var box : h3d.scene.Object;
 	var alib : hxd.fmt.fbx.Library;
 	var ahmd : hxd.fmt.hmd.Library;
+	var freezeCamera : Bool;
 
 	var tree : TreeView;
 	var checker : h3d.scene.Mesh;
 	var infos : { tri : Int, objs : Int, verts : Int};
 	var reload : Array<Void -> Void> = [];
 
+	var ctrl : h3d.scene.CameraController;
+
 	function new() {
 		super();
 
-		pMouse = new h2d.col.Point();
 		obj = new h3d.scene.Object();
 
 		rightHand = false;
 		playAnim = true;
-		freeMove = false;
-		rightClick = false;
 
 		props = {
 			curFile : "",
-			camPos : { x:10, y:0, z:0, tx:0, ty:0, tz:0 },
 			smoothing:true,
 			showAxis:true, showBones:false, showBox:false,
 			speed:1., loop:true,
 			lights : true, normals : false,
-			convertHMD : false,
+			convertHMD : true,
 			queueAnims:false,
 			treeview:true,
 			checker:false,
+			materials:false,
 		};
 		props = hxd.Save.load(props);
 		props.speed = 1;
-
-		tf = new flash.text.TextField();
-		var fmt = tf.defaultTextFormat;
-		fmt.align = flash.text.TextFormatAlign.RIGHT;
-		tf.defaultTextFormat = fmt;
-		tf.width = 200;
-		tf.x = flash.Lib.current.stage.stageWidth - (tf.width + 5);
-		tf.y = 5;
-		tf.textColor = 0xFFFFFF;
-		tf.filters = [new flash.filters.GlowFilter(0, 1, 2, 2, 20)];
-		tf.selectable = false;
-		flash.Lib.current.addChild(tf);
-
-		tf_keys = new flash.text.TextField();
-		tf_keys.x = 5;
-		tf_keys.width = 500;
-		tf_keys.height = 1000;
-		tf_keys.textColor = 0xFFFFFF;
-		tf_keys.filters = [new flash.filters.GlowFilter(0, 1, 2, 2, 20)];
-		tf_keys.visible = false;
-		tf_keys.selectable = false;
-		flash.Lib.current.addChild(tf_keys);
-
-		tf_help = new flash.text.TextField();
-		tf_help.x = 5;
-		tf_help.y = flash.Lib.current.stage.stageHeight - 25;
-		tf_help.width = 120;
-		tf_help.text = "[H] Show/Hide keys";
-		tf_help.textColor = 0xFFFFFF;
-		tf_help.filters = [new flash.filters.GlowFilter(0, 1, 2, 2, 20)];
-		tf_help.selectable = false;
-		flash.Lib.current.addChild(tf_help);
 	}
 
 	function save() {
@@ -126,7 +82,24 @@ class Viewer extends hxd.App {
 	override function init() {
 		engine.debug = true;
 		engine.backgroundColor = 0xFF808080;
+		ctrl = new h3d.scene.CameraController(s3d);
 		s2d.addEventListener(onEvent);
+
+		var font = hxd.res.DefaultFont.get();
+		tf = new h2d.Text(font, s2d);
+		tf.textAlign = Right;
+		tf.maxWidth = 200;
+		tf.x = s2d.width - (tf.maxWidth + 5);
+		tf.y = 5;
+		tf.textColor = 0xFFFFFF;
+
+		tf_keys = new h2d.Text(font, s2d);
+		tf_keys.x = 5;
+		tf_keys.visible = false;
+
+		tf_help = new h2d.Text(font, s2d);
+		tf_help.x = 5;
+		tf_help.text = "[H] Show/Hide keys";
 
 		var len = 10;
 		axis = new h3d.scene.Graphics(s3d);
@@ -150,46 +123,25 @@ class Viewer extends hxd.App {
 			s3d.addChild(axis);
 		else
 			s3d.removeChild(axis);
+
+
+		initConsole();
+		onResize();
 	}
 
 	override function onResize() {
-		tf.x = s2d.width - (tf.width + 5);
-		tf_help.y = s2d.height - 25;
+		tf.x = s2d.width - (tf.maxWidth + 5);
+		tf_help.y = s2d.height - 35;
 		tf_keys.y = s2d.height - tf_keys.textHeight - 35;
+		tf_keys.x = tf_help.x = s2d.width - 250;
 	}
 
 	function onEvent( e : hxd.Event ) {
 		switch( e.kind ) {
-		case EPush:
-			pMouse.set(e.relX, e.relY);
-			switch( e.button ) {
-			case 1:
-				freeMove = true;
-			case 0:
-				rightClick = true;
-			}
-		case ERelease:
-			switch( e.button ) {
-			case 1:
-				freeMove = false;
-			case 0:
-				rightClick = false;
-			}
-			save();
-		case EWheel:
-			if( e.wheelDelta > 0 ) zoom(1.2) else zoom(1 / 1.2);
 		case EKeyDown:
 			onKey(e);
 		default:
 		}
-	}
-
-	function zoom( z : Float ) {
-		var d = s3d.camera.target.sub(s3d.camera.pos);
-		d.scale3(z);
-		s3d.camera.pos = s3d.camera.target.sub(d);
-		s3d.camera.follow = null;
-		save();
 	}
 
 	function onKey( e : hxd.Event ) {
@@ -238,31 +190,6 @@ class Viewer extends hxd.App {
 			props.treeview = !props.treeview;
 			if(tree != null)
 				tree.visible = props.treeview;
-		case "G".code:
-			props.checker = !props.checker;
-			showChecker(props.checker);
-
-		case "R".code:
-			if( props.convertHMD ) return;
-			rightHand = !rightHand;
-			cam.pos.x *= -1;
-			cam.target.x *= -1;
-			reload = true;
-		case "K".code:
-			props.showBones = !props.showBones;
-			setMaterial();
-		case "Y".code:
-			props.showAxis = !props.showAxis;
-			if( props.showAxis )
-				s3d.addChild(axis);
-			else
-				s3d.removeChild(axis);
-		case "M".code:
-			props.smoothing = !props.smoothing;
-			setMaterial();
-		case "N".code:
-			props.normals = !props.normals;
-			setMaterial();
 		case "B".code:
 			props.showBox = !props.showBox;
 			if( props.showBox && box != null )
@@ -302,7 +229,11 @@ class Viewer extends hxd.App {
 		case "Q".code:
 			props.queueAnims = !props.queueAnims;
 		default:
-			tree.onKey(e);
+			var over = TreeView.currentOver;
+			if( over != null ) {
+				over.onKey(e);
+				tree.draw();
+			}
 		}
 
 		if( reload && curData != null )
@@ -320,7 +251,8 @@ class Viewer extends hxd.App {
 		});
 		l.addEventListener(flash.events.Event.COMPLETE, function(_) {
 			loadData(haxe.io.Bytes.ofData(l.data));
-			resetCamera();
+			if( !freezeCamera )
+				resetCamera();
 			if( newFbx )
 				save();
 		});
@@ -369,6 +301,7 @@ class Viewer extends hxd.App {
 					return;
 				}
 				t.resize(size.width, size.height);
+				t.wrap = t.flags.has(IsNPOT) ? Clamp : Repeat;
 				t.uploadPixels(new hxd.Pixels(size.width, size.height, pixels, BGRA));
 				reload.push(loadTexture.bind(textureName, mat, handleAlpha));
 			});
@@ -379,6 +312,7 @@ class Viewer extends hxd.App {
 			loader.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, function(_) {
 				var bmp = flash.Lib.as(loader.content, flash.display.Bitmap).bitmapData;
 				t.resize(bmp.width, bmp.height);
+				t.wrap = t.flags.has(IsNPOT) ? Clamp : Repeat;
 				t.uploadBitmap(hxd.BitmapData.fromNative(bmp));
 				reload.push(loadTexture.bind(textureName, mat, handleAlpha));
 			});
@@ -407,7 +341,8 @@ class Viewer extends hxd.App {
 					ahmd = null;
 					props.curFile = sel.fileName;
 					loadData(bytes);
-					resetCamera();
+					if( !freezeCamera )
+						resetCamera();
 					save();
 				}
 			});
@@ -479,11 +414,7 @@ class Viewer extends hxd.App {
 
 		box = new h3d.scene.Box(0xFFFF9910);
 
-		TreeView.init(s2d);
-		tree = new TreeView(obj);
-		tree.x = 0;
-		tree.y = 0;
-		tree.visible = props.treeview;
+		initTree();
 
 		setMaterial();
 		setAnim();
@@ -492,11 +423,30 @@ class Viewer extends hxd.App {
 		save();
 	}
 
+	function initTree() {
+		TreeView.init(s2d);
+		tree = new TreeView(obj);
+		tree.x = 0;
+		tree.y = 0;
+		tree.visible = props.treeview;
+	}
+
 	function getInfos(obj : h3d.scene.Object) {
 		var tri = 0, objs = 0, verts = 0;
 		function getObjectsRec( o : h3d.scene.Object) {
+
+			// auto hide meshes with special names
+			if( o.name != null && (o.name.toLowerCase().indexOf("selection") != -1 || o.name.toLowerCase().indexOf("collide") != -1) ) {
+				var mats = o.getMaterials();
+				if( o.numChildren == 0 && mats.length == 1 && Std.instance(mats[0], h3d.mat.MeshMaterial).texture == null )
+					o.visible = false;
+			}
+
+			if( !o.visible ) return;
+
 			objs++;
-			if(o.isMesh()) {
+
+			if( o.isMesh() ) {
 				tri += o.toMesh().primitive.triCount();
 				verts += o.toMesh().primitive.vertexCount();
 			}
@@ -552,13 +502,13 @@ class Viewer extends hxd.App {
 		var zang = Math.PI * 0.4;
 		s3d.camera.pos.set(Math.sin(zang) * Math.cos(ang) * dist, Math.sin(zang) * Math.sin(ang) * dist, Math.cos(zang) * dist);
 		s3d.camera.target.set(0, 0, (b.zMax + b.zMin) * 0.5);
+		ctrl.loadFromCamera();
 
 		var c = b.getCenter();
 		box.x = c.x;
 		box.y = c.y;
 		box.z = c.z;
 
-		s3d.camera.fovY = 25;
 		s3d.camera.follow = null;
 
 		var cameras = [];
@@ -593,8 +543,12 @@ class Viewer extends hxd.App {
 			if( multi != null ) materials = multi.materials;
 			for( m in materials ) {
 				if( m == null ) continue;
-				if( m.texture != null )
+				if( m.texture != null ) {
 					m.texture.filter = props.smoothing ? Linear : Nearest;
+					m.textureShader.killAlpha = true;
+					m.textureShader.killAlphaThreshold = 0.5;
+				}
+				m.mainPass.culling = None;
 			}
 			var s = Std.instance(o, h3d.scene.Skin);
 			if( s != null )
@@ -603,11 +557,14 @@ class Viewer extends hxd.App {
 				tree.showJoints = props.showBones;
 			if( props.normals ) {
 				if( m.name != "__normals__" ) {
-					var n = new h3d.scene.Mesh(m.primitive.buildNormalsDisplay(), m);
-					n.material.color.set(0, 0, 1);
-					n.material.mainPass.culling = None;
-					n.material.mainPass.addShader(new h3d.shader.LineShader()).lengthScale = 0.2;
-					n.name = "__normals__";
+					var buf = try m.primitive.buildNormalsDisplay() catch( e : Dynamic ) null;
+					if( buf != null ) {
+						var n = new h3d.scene.Mesh(buf, m);
+						n.material.color.set(0, 0, 1);
+						n.material.mainPass.culling = None;
+						n.material.mainPass.addShader(new h3d.shader.LineShader()).lengthScale = 0.2;
+						n.name = "__normals__";
+					}
 				}
 			} else if( m.name == "__normals__" )
 				m.remove();
@@ -669,66 +626,74 @@ class Viewer extends hxd.App {
 		}
 	}
 
+	function initConsole() {
+
+		function reload() {
+			if( curData != null ) loadData(curData);
+		}
+
+		var console = new h2d.Console(hxd.res.DefaultFont.get(), s2d);
+		console.addCommand("materials", [], function() {
+			props.materials = !props.materials;
+			save();
+			initTree();
+		});
+		console.addCommand("axis", [], function() {
+			props.showAxis = !props.showAxis;
+			if( props.showAxis )
+				s3d.addChild(axis);
+			else
+				s3d.removeChild(axis);
+			save();
+		});
+		console.addCommand("righthand", [], function() {
+			if( props.convertHMD ) {
+				console.log("Only in FBX");
+				return;
+			}
+			rightHand = !rightHand;
+			s3d.camera.pos.x *= -1;
+			s3d.camera.target.x *= -1;
+			reload();
+		});
+
+		console.addCommand("normals", [], function() {
+			props.normals = !props.normals;
+			save();
+			setMaterial();
+		});
+
+		console.addCommand("freezeCamera", [], function() {
+			freezeCamera = !freezeCamera;
+			ctrl.visible = !freezeCamera;
+		});
+
+		console.addCommand("ground", [], function() {
+			props.checker = !props.checker;
+			save();
+			showChecker(props.checker);
+		});
+
+		console.addCommand("joints", [], function() {
+			props.showBones = !props.showBones;
+			save();
+			setMaterial();
+		});
+
+		console.addCommand("smooth", [], function() {
+			props.smoothing = !props.smoothing;
+			save();
+			setMaterial();
+		});
+	}
+
 	override function update( dt : Float ) {
-		var cam = s3d.camera;
 
 		if(tree != null)
 			tree.update(dt);
 
-		//FREE MOUSE MOVE
-		if (freeMove) {
-			var dx = (s2d.mouseX - pMouse.x) * 0.01;
-			var dy = (s2d.mouseY - pMouse.y) * 0.01;
 
-			if( dx != 0 || dy != 0 )
-				cam.follow = null;
-
-			var d = cam.pos.sub(cam.target);
-			var dist = d.length();
-			var r = Math.acos(d.z / dist);
-			r -= dy * cam.up.z;
-			r = Math.max(0.0001, Math.min(Math.PI - 0.0001, r));
-			var k = Math.atan2(d.y, d.x);
-			k += dx * cam.up.z;
-
-			cam.pos.set(cam.target.x + Math.sin(r) * Math.cos(k) * dist, cam.target.y + Math.sin(r) * Math.sin(k) * dist, cam.target.z + Math.cos(r) * dist);
-			pMouse.set(s2d.mouseX, s2d.mouseY);
-		}
-		else if (rightClick) {
-
-			var dx = (pMouse.x - s2d.mouseX) / s2d.width;
-			var dy = (pMouse.y - s2d.mouseY) / s2d.height;
-			if( dx != 0 || dy != 0 )
-				cam.follow = null;
-
-			var d : h3d.Vector = cam.pos.sub(cam.target);
-			var dist = d.length();
-
-			dx *= dist;
-			dy *= dist;
-
-			d.normalize();
-			var left = d.cross(cam.up);
-			var up = left.cross(d);
-
-			left.scale3(dx);
-			up.scale3(dy);
-
-			cam.pos = cam.pos.add(left).sub(up);
-			cam.target = cam.target.add(left).sub(up);
-
-			pMouse.set(s2d.mouseX, s2d.mouseY);
-		}
-
-		if( K.isDown(K.PGDOWN) )
-			zoom(Math.pow(1.03,dt));
-		else if( K.isDown(K.PGUP) )
-			zoom(Math.pow(0.97,dt));
-
-		var dist = cam.target.sub(cam.pos).length();
-		cam.zFar = dist * 5;
-		cam.zNear = dist * 0.1;
-		cam.rightHanded = rightHand;
+		s3d.camera.rightHanded = rightHand;
 
 		if( box != null ) {
 			var b = obj.getBounds();
@@ -750,25 +715,19 @@ class Viewer extends hxd.App {
 			"[F2] Load animation",
 			"[A] Animation = " + loadAnim,
 			"[L] Loop = "+props.loop,
-			"[Y] Axis = "+props.showAxis,
-			"[K] Bones = "+props.showBones,
 			"[B] Bounds = "+props.showBox+(box == null ? "" : " ["+fmt(box.scaleX)+" x "+fmt(box.scaleY)+" x "+fmt(box.scaleZ)+"]"),
 			"[S] Slow Animation",
-			"[+/-] Speed Animation = "+props.speed,
-			"[R] Right-Hand Camera = "+rightHand,
-			"[M] Tex Smoothing = " + props.smoothing,
-			"[N] Show normals = "+props.normals,
+			"[+/-] Speed Animation = "+Std.int(props.speed*100)+"%",
 			"[I] Lights = " + props.lights,
 			"[C] Use HMD model = " + props.convertHMD,
 			"[Q] Queue anims = "+props.queueAnims,
 			"[O] Show/Hide treeview = "+props.treeview,
 			"[V] Show/Hide selected object",
-			"[G] Show/Hide ground = "+props.checker,
-			"",
+			"[T] Change material texture",
 			"[F] Default camera",
 			"[Space/P] Pause Animation",
 			"[LMB + Move] Rotation",
-			"[RMB + Move] translation",
+			"[RMB + Move] Translation",
 			"[Wheel] Zoom"
 		].join("\n");
 		tf_keys.y = s2d.height - tf_keys.textHeight - 35;
@@ -779,7 +738,7 @@ class Viewer extends hxd.App {
 
 		file += " (" + Math.ceil(curDataSize / 1024) + "KB)";
 		tf.text = [
-			(cam.rightHanded ? "R " : "") + fmt(hxd.Timer.fps()),
+			(s3d.camera.rightHanded ? "R " : "") + fmt(hxd.Timer.fps()),
 			"speed : " + hxd.Math.fmt(props.speed),
 			file,
 			infos != null ? infos.tri + " tri  /  " + infos.objs + " obj  /  " + infos.verts + " vert" : "",
@@ -788,7 +747,7 @@ class Viewer extends hxd.App {
 		hxd.Timer.tmod *= props.speed;
 	}
 
-	static var inst : Viewer;
+	public static var inst : Viewer;
 
 	static function initAIR() {
 		#if air3

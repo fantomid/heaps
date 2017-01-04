@@ -63,9 +63,9 @@ class Dce {
 		}
 
 		for( f in vertex.funs )
-			f.expr = mapExpr(f.expr);
+			f.expr = mapExpr(f.expr, false);
 		for( f in fragment.funs )
-			f.expr = mapExpr(f.expr);
+			f.expr = mapExpr(f.expr, false);
 
 
 		return {
@@ -137,31 +137,46 @@ class Dce {
 			writeTo.pop();
 			check(eif, writeTo);
 			if( eelse != null ) check(eelse, writeTo);
+		case TFor(v, it, loop):
+			writeTo.push(null);
+			check(it, writeTo);
+			check(loop, writeTo);
+			writeTo.pop();
 		default:
 			e.iter(check.bind(_, writeTo));
 		}
 	}
 
-	function mapExpr( e : TExpr ) : TExpr {
+	function mapExpr( e : TExpr, isVar ) : TExpr {
 		switch( e.e ) {
 		case TBlock(el):
 			var out = [];
 			var count = 0;
 			for( e in el ) {
-				var e = mapExpr(e);
-				switch( e.e ) {
-				case TConst(_) if( count < el.length ):
-				case TBlock([]):
-				default:
+				var isVar = isVar && count == el.length - 1;
+				var e = mapExpr(e, isVar);
+				if( e.hasSideEffect() || isVar )
 					out.push(e);
-				}
 				count++;
 			}
 			return { e : TBlock(out), p : e.p, t : e.t };
 		case TVarDecl(v,_) | TBinop(OpAssign | OpAssignOp(_), { e : (TVar(v) | TSwiz( { e : TVar(v) }, _)) }, _) if( !get(v).used ):
 			return { e : TConst(CNull), t : e.t, p : e.p };
+		case TIf(e, econd, eelse):
+			var e = mapExpr(e, true);
+			var econd = mapExpr(econd, isVar);
+			var eelse = eelse == null ? null : mapExpr(eelse, isVar);
+			if( !isVar && !econd.hasSideEffect() && (eelse == null || !eelse.hasSideEffect()) )
+				return { e : TConst(CNull), t : e.t, p : e.p };
+			return { e : TIf(e, econd, eelse), p : e.p, t : e.t };
+		case TFor(v, it, loop):
+			var it = mapExpr(it, true);
+			var loop = mapExpr(loop, false);
+			if( !loop.hasSideEffect() )
+				return { e : TConst(CNull), t : e.t, p : e.p };
+			return { e : TFor(v, it, loop), p : e.p, t : e.t };
 		default:
-			return e.map(mapExpr);
+			return e.map(function(e) return mapExpr(e,true));
 		}
 	}
 

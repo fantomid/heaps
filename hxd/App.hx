@@ -1,6 +1,6 @@
 package hxd;
 
-class App {
+class App implements h3d.IDrawable {
 
 	public var engine : h3d.Engine;
 	public var s3d : h3d.scene.Scene;
@@ -30,6 +30,27 @@ class App {
 	function onResize() {
 	}
 
+	function setScene3D( s3d : h3d.scene.Scene, disposePrevious = true ) {
+		sevents.removeScene(this.s3d);
+		sevents.addScene(s3d);
+		if( disposePrevious )
+			this.s3d.dispose();
+		this.s3d = s3d;
+	}
+
+	function setScene2D( s2d : h2d.Scene, disposePrevious = true ) {
+		sevents.removeScene(this.s2d);
+		sevents.addScene(s2d,0);
+		if( disposePrevious )
+			this.s2d.dispose();
+		this.s2d = s2d;
+	}
+
+	public function render(e:h3d.Engine) {
+		s3d.render(e);
+		s2d.render(e);
+	}
+
 	function setup() {
 		var initDone = false;
 		engine.onResized = function() {
@@ -39,7 +60,6 @@ class App {
 		};
 		s3d = new h3d.scene.Scene();
 		s2d = new h2d.Scene();
-		s3d.addPass(s2d);
 		sevents = new hxd.SceneEvents();
 		sevents.addScene(s2d);
 		sevents.addScene(s3d);
@@ -83,32 +103,17 @@ class App {
 			log.logLines = [];
 			engine.setDriver(log);
 			try {
-				engine.render(s3d);
+				engine.render(this);
 			} catch( e : Dynamic ) {
 				log.logLines.push(Std.string(e));
 			}
 			driver.logEnable = old;
 			engine.setDriver(driver);
 			hxd.File.saveBytes("log.txt", haxe.io.Bytes.ofString(log.logLines.join("\n")));
-		} else {
-			var scnDriver = Std.instance(engine.driver, h3d.impl.ScnDriver);
-			if( hxd.Key.isDown(hxd.Key.CTRL) && hxd.Key.isDown(hxd.Key.F11) ) {
-				if( scnDriver == null ) {
-					engine.setDriver(new h3d.impl.ScnDriver(engine.driver));
-					engine.mem.onContextLost();
-					engine.onContextLost();
-					engine.resize(engine.width, engine.height);
-					engine.render(s3d); // first render to perform allocations
-				}
-			} else if( scnDriver != null ) {
-				engine.setDriver(scnDriver.getDriver());
-				hxd.File.saveBytes("record.scn", scnDriver.getBytes());
-			}
-			engine.render(s3d);
+			return;
 		}
-		#else
-			engine.render(s3d);
 		#end
+		engine.render(this);
 	}
 
 	function update( dt : Float ) {

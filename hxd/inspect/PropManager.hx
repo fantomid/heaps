@@ -1,17 +1,17 @@
 package hxd.inspect;
-import cdb.jq.JQuery;
+import vdom.JQuery;
 import hxd.inspect.Property;
 
 private typedef History = { path : String, oldV : Dynamic, newV : Dynamic };
 
-class PropManager extends cdb.jq.Client {
+class PropManager extends vdom.Client {
 
 	public var host : String = "127.0.0.1";
 	public var port = 6669;
 	public var connected(default,null) = false;
 
 	var sock : hxd.net.Socket;
-	var pendingMessages : Array<cdb.jq.Message>;
+	var pendingMessages : Array<vdom.Message>;
 
 	var refreshProps : Void -> Void;
 	var history : Array<History>;
@@ -38,8 +38,7 @@ class PropManager extends cdb.jq.Client {
 				var len = try sock.input.readUInt16() catch( e : haxe.io.Eof ) -1;
 				if( len < 0 ) break;
 				var data = sock.input.read(len);
-				var msg : cdb.jq.Message.Answer = cdb.BinSerializer.unserialize(data);
-				handle(msg);
+				handle(decodeAnswer(data));
 			}
 		}
 		connect();
@@ -52,7 +51,7 @@ class PropManager extends cdb.jq.Client {
 		}
 	}
 
-	override function onKey(e:cdb.jq.Event) {
+	override function onKey(e:vdom.Event) {
 		switch( e.keyCode ) {
 		case 'Z'.code if( e.ctrlKey ):
 			undo();
@@ -63,7 +62,7 @@ class PropManager extends cdb.jq.Client {
 		}
 	}
 
-	public dynamic function handleKey( e : cdb.jq.Event ) {
+	public dynamic function handleKey( e : vdom.Event ) {
 	}
 
 	function connect() {
@@ -78,17 +77,17 @@ class PropManager extends cdb.jq.Client {
 
 	function flushMessages() {
 		if( pendingMessages == null ) return;
-		var msg = pendingMessages.length == 1 ? pendingMessages[0] : cdb.jq.Message.Group(pendingMessages);
+		var msg = pendingMessages.length == 1 ? pendingMessages[0] : vdom.Message.Group(pendingMessages);
 		pendingMessages = null;
 		if( sock == null ) return;
-		var data = cdb.BinSerializer.serialize(msg);
+		var data = encodeMessage(msg);
 		sock.out.wait();
 		sock.out.writeInt32(data.length);
 		sock.out.write(data);
 		sock.out.flush();
 	}
 
-	override function send( msg : cdb.jq.Message ) {
+	override function send( msg : vdom.Message ) {
 		if( pendingMessages == null ) {
 			pendingMessages = [];
 			haxe.Timer.delay(flushMessages,0);
@@ -163,17 +162,30 @@ class PropManager extends cdb.jq.Client {
 		return null;
 	}
 
-	public static function setPropValue( p : Property, v : Dynamic ) {
+	public static function setPropValue( p : Property, v : Dynamic, lerp = 1. ) {
 		switch( p ) {
-		case PInt(_, _, set):
+		case PInt(_, get, set):
 			if( !Std.is(v, Int) ) throw "Invalid int value " + v;
-			set(v);
-		case PFloat(_, _, set):
+			var v : Int = v;
+			if( lerp == 1 )
+				set(v);
+			else {
+				var prev = get();
+				var u = hxd.Math.lerp(prev, v, lerp);
+				set( prev < v ? Math.ceil(u) : Math.floor(u) );
+			}
+		case PFloat(_, get, set):
 			if( !Std.is(v, Float) ) throw "Invalid float value " + v;
-			set(v);
-		case PRange(_, _, _, _, set):
+			if( lerp == 1 )
+				set(v);
+			else
+				set(hxd.Math.lerp(get(), v, lerp));
+		case PRange(_, _, _, get, set):
 			if( !Std.is(v, Float) ) throw "Invalid float value " + v;
-			set(v);
+			if( lerp == 1 )
+				set(v);
+			else
+				set(hxd.Math.lerp(get(), v, lerp));
 		case PBool(_, _, set):
 			if( !Std.is(v, Bool) ) throw "Invalid bool value " + v;
 			set(v);
@@ -184,16 +196,34 @@ class PropManager extends cdb.jq.Client {
 			var e = en.createAll()[v];
 			if( e == null || !Std.is(v, Int) ) throw "Invalid enum " + en.getName() + " value " + v;
 			set(e);
-		case PColor(_, _, _, set):
+		case PColor(_, _, get, set):
 			if( !Std.is(v, String) ) throw "Invalid color value " + v;
 			var v : String = v;
-			set(h3d.Vector.fromColor(Std.parseInt("0x"+v.substr(1))));
+			var newV = h3d.Vector.fromColor(Std.parseInt("0x" + v.substr(1)));
+			if( lerp == 1 )
+				set(newV);
+			else {
+				var prev = get();
+				newV.r = hxd.Math.lerp(prev.r, newV.r, lerp);
+				newV.g = hxd.Math.lerp(prev.g, newV.g, lerp);
+				newV.b = hxd.Math.lerp(prev.b, newV.b, lerp);
+				newV.a = hxd.Math.lerp(prev.a, newV.a, lerp);
+				set(newV);
+			}
 		case PFloats(_, get, set):
 			if( !Std.is(v, Array) ) throw "Invalid floats value " + v;
 			var a : Array<Float> = v;
-			var need = get().length;
-			if( a.length != need ) throw "Require "+need+" floats in value " + v;
-			set(a.copy());
+			var prev = get();
+			var need = prev.length;
+			if( a.length != need ) throw "Require " + need + " floats in value " + v;
+			if( lerp == 1 )
+				set(a.copy());
+			else {
+				var newA = a.copy();
+				for( i in 0...need )
+					newA[i] = hxd.Math.lerp(prev[i], newA[i], lerp);
+				set(newA);
+			}
 		case PTexture(_, _, set):
 			if( !Std.is(v, String) ) throw "Invalid texture value " + v;
 			var path : String = v;

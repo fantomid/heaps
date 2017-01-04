@@ -525,6 +525,7 @@ class System {
 	static var windowHeight = 600;
 	static var mouseX = 0;
 	static var mouseY = 0;
+	static var shiftDown : Bool;
 	static var currentLoop = null;
 	static var CODEMAP = [for( i in 0...2048 ) i];
 	static var CHARMAP = [for( i in 0...2048 ) 0];
@@ -553,12 +554,23 @@ class System {
 			mouseX = e.mouseX;
 			mouseY = e.mouseY;
 			eh = new Event(EPush, e.mouseX, e.mouseY);
-			eh.button = e.button - 1;
+			// middle button -> 2 / right button -> 1
+			eh.button = switch( e.button - 1 ) {
+			case 0: 0;
+			case 1: 2;
+			case 2: 1;
+			case x: x;
+			}
 		case MouseUp:
 			mouseX = e.mouseX;
 			mouseY = e.mouseY;
 			eh = new Event(ERelease, e.mouseX, e.mouseY);
-			eh.button = e.button - 1;
+			eh.button = switch( e.button - 1 ) {
+			case 0: 0;
+			case 1: 2;
+			case 2: 1;
+			case x: x;
+			};
 		case MouseMove:
 			mouseX = e.mouseX;
 			mouseY = e.mouseY;
@@ -568,8 +580,11 @@ class System {
 			if( e.keyCode & (1 << 30) != 0 ) e.keyCode = (e.keyCode & ((1 << 30) - 1)) + 1000;
 			eh.keyCode = CODEMAP[e.keyCode];
 			eh.charCode = CHARMAP[e.keyCode];
+			if( eh.charCode >= 'a'.code && eh.charCode <= 'z'.code && shiftDown )
+				eh.charCode += 'A'.code - 'a'.code;
 			if( eh.keyCode & (K.LOC_LEFT | K.LOC_RIGHT) != 0 ) {
 				e.keyCode = eh.keyCode & 0xFF;
+				if( e.keyCode == K.SHIFT ) shiftDown = true;
 				onEvent(e);
 			}
 		case KeyUp:
@@ -577,8 +592,11 @@ class System {
 			if( e.keyCode & (1 << 30) != 0 ) e.keyCode = (e.keyCode & ((1 << 30) - 1)) + 1000;
 			eh.keyCode = CODEMAP[e.keyCode];
 			eh.charCode = CHARMAP[e.keyCode];
+			if( eh.charCode >= 'a'.code && eh.charCode <= 'z'.code && shiftDown )
+				eh.charCode += 'A'.code - 'a'.code;
 			if( eh.keyCode & (K.LOC_LEFT | K.LOC_RIGHT) != 0 ) {
 				e.keyCode = eh.keyCode & 0xFF;
+				if( e.keyCode == K.SHIFT ) shiftDown = false;
 				onEvent(e);
 			}
 		case MouseWheel:
@@ -614,16 +632,16 @@ class System {
 			addKey(1058 + i, K.F1 + i);
 
 		// NUMPAD
-		CHARMAP[1098] = "0".code;
-		CHARMAP[1085] = "*".code;
-		CHARMAP[1087] = "+".code;
-		CHARMAP[1088] = 13;
-		CHARMAP[1086] = "-".code;
-		CHARMAP[1084] = "/".code;
-		CHARMAP[1099] = ".".code;
-		addKey(1088, K.NUMPAD_0, "0".code);
+
+		addKey(1084, K.NUMPAD_DIV, "/".code);
+		addKey(1085, K.NUMPAD_MULT, "*".code);
+		addKey(1086, K.NUMPAD_SUB, "-".code);
+		addKey(1087, K.NUMPAD_ADD, "+".code);
+		addKey(1088, K.NUMPAD_ENTER, 13);
 		for( i in 0...9 )
 			addKey(1089 + i, K.NUMPAD_1 + i, "1".code + i);
+		addKey(1098, K.NUMPAD_0, "0".code);
+		addKey(1099, K.NUMPAD_DOT, ".".code);
 
 		// EXTRA
 		var keys = [

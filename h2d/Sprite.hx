@@ -7,6 +7,7 @@ class Sprite {
 	static var nullDrawable : h2d.Drawable;
 
 	var childs : Array<Sprite>;
+	var parentContainer : Sprite;
 	public var parent(default, null) : Sprite;
 	public var numChildren(get, never) : Int;
 
@@ -15,7 +16,7 @@ class Sprite {
 	public var scaleX(default,set) : Float;
 	public var scaleY(default,set) : Float;
 	public var rotation(default, set) : Float;
-	public var visible : Bool;
+	public var visible(default, set) : Bool;
 	public var name : String;
 	public var alpha : Float = 1.;
 
@@ -71,8 +72,7 @@ class Sprite {
 	**/
 	public function getSize( ?out : h2d.col.Bounds ) : h2d.col.Bounds {
 		if( out == null ) out = new h2d.col.Bounds() else out.empty();
-		if( parent != null )
-			parent.syncPos();
+		syncPos();
 		getBoundsRec(parent, out, true);
 		if( out.isEmpty() ) {
 			addBounds(parent, out, -1, -1, 2, 2);
@@ -200,6 +200,14 @@ class Sprite {
 		return Std.instance(p, Scene);
 	}
 
+	function set_visible(b) {
+		if( visible == b )
+			return b;
+		visible = b;
+		onContentChanged();
+		return b;
+	}
+
 	public function addChild( s : Sprite ) {
 		addChildAt(s, childs.length);
 	}
@@ -223,6 +231,7 @@ class Sprite {
 		if( !allocated && s.allocated )
 			s.onDelete();
 		s.parent = this;
+		s.parentContainer = parentContainer;
 		s.posChanged = true;
 		// ensure that proper alloc/delete is done if we change parent
 		if( allocated ) {
@@ -231,6 +240,11 @@ class Sprite {
 			else
 				s.onParentChangedRec();
 		}
+		onContentChanged();
+	}
+
+	inline function onContentChanged() {
+		if( parentContainer != null ) parentContainer.contentChanged(this);
 	}
 
 	function onParentChangedRec() {
@@ -270,7 +284,9 @@ class Sprite {
 		if( childs.remove(s) ) {
 			if( s.allocated ) s.onDelete();
 			s.parent = null;
+			s.parentContainer = null;
 			s.posChanged = true;
+			onContentChanged();
 		}
 	}
 
@@ -389,7 +405,7 @@ class Sprite {
 			ctx.drawTile(nullDrawable, tile);
 			return;
 		}
-		ctx.beginDrawBatch(nullDrawable, tile.getTexture());
+		if( !ctx.beginDrawBatch(nullDrawable, tile.getTexture()) ) return;
 
 		var ax = absX + tile.dx * matA + tile.dy * matC;
 		var ay = absY + tile.dx * matB + tile.dy * matD;
@@ -451,6 +467,24 @@ class Sprite {
 	**/
 	function clipBounds( ctx : RenderContext, bounds : h2d.col.Bounds ) {
 		var view = ctx.tmpBounds;
+		var matA, matB, matC, matD, absX, absY;
+		@:privateAccess if( ctx.inFilter != null ) {
+			var f1 = ctx.baseShader.filterMatrixA;
+			var f2 = ctx.baseShader.filterMatrixB;
+			matA = this.matA * f1.x + this.matB * f1.y;
+			matB = this.matA * f2.x + this.matB * f2.y;
+			matC = this.matC * f1.x + this.matD * f1.y;
+			matD = this.matC * f2.x + this.matD * f2.y;
+			absX = this.absX * f1.x + this.absY * f1.y + f1.z;
+			absY = this.absX * f2.x + this.absY * f2.y + f2.z;
+		} else {
+			matA = this.matA;
+			matB = this.matB;
+			matC = this.matC;
+			matD = this.matD;
+			absX = this.absX;
+			absY = this.absY;
+		}
 
 		// intersect our transformed local view with our viewport in global space
 		view.empty();
@@ -463,10 +497,12 @@ class Sprite {
 		add(bounds.xMax, bounds.yMax);
 
 		// clip with our scene
-		if( view.xMin < 0 ) view.xMin = 0;
-		if( view.yMin < 0 ) view.yMin = 0;
-		@:privateAccess if( view.xMax > ctx.curWidth ) view.xMax = ctx.curWidth;
-		@:privateAccess if( view.yMax > ctx.curHeight ) view.yMax = ctx.curHeight;
+		@:privateAccess {
+			if( view.xMin < ctx.curX ) view.xMin = ctx.curX;
+			if( view.yMin < ctx.curY ) view.yMin = ctx.curY;
+			if( view.xMax > ctx.curX + ctx.curWidth ) view.xMax = ctx.curX + ctx.curWidth;
+			if( view.yMax > ctx.curY + ctx.curHeight ) view.yMax = ctx.curY + ctx.curHeight;
+		}
 
 		// inverse our matrix
 		var invDet = 1 / (matA * matD - matB * matC);
@@ -492,6 +528,8 @@ class Sprite {
 	}
 
 	function drawFilters( ctx : RenderContext ) {
+		if( !ctx.pushFilter(this) ) return;
+
 		var bounds = ctx.tmpBounds;
 		var total = new h2d.col.Bounds();
 		var maxExtent = -1.;
@@ -523,7 +561,7 @@ class Sprite {
 		if( width <= 0 || height <= 0 || total.xMax < total.xMin ) return;
 
 		var t = ctx.textures.allocTarget("filterTemp", ctx, width, height, false);
-		ctx.pushTarget(t, xMin, yMin);
+		ctx.pushTarget(t, xMin, yMin, width, height);
 		ctx.engine.clear(0);
 
 		// reset transform and update childs
@@ -542,7 +580,6 @@ class Sprite {
 		var invX = -(absX * invA + absY * invC);
 		var invY = -(absX * invB + absY * invD);
 
-		@:privateAccess ctx.inFilter = this;
 		shader.filterMatrixA.set(invA, invC, invX);
 		shader.filterMatrixB.set(invB, invD, invY);
 		ctx.globalAlpha = 1;
@@ -569,9 +606,9 @@ class Sprite {
 
 		shader.filterMatrixA.load(oldA);
 		shader.filterMatrixB.load(oldB);
-		@:privateAccess ctx.inFilter = oldF;
 
 		ctx.popTarget();
+		ctx.popFilter();
 
 		ctx.globalAlpha = oldAlpha * alpha;
 		emitTile(ctx, final);
@@ -595,9 +632,14 @@ class Sprite {
 		} else {
 			var old = ctx.globalAlpha;
 			ctx.globalAlpha *= alpha;
-			draw(ctx);
-			for( c in childs )
-				c.drawRec(ctx);
+			if( ctx.front2back ) {
+				var nchilds = childs.length;
+				for (i in 0...nchilds) childs[nchilds - 1 - i].drawRec(ctx);
+				draw(ctx);
+			} else {
+				draw(ctx);
+				for( c in childs ) c.drawRec(ctx);
+			}
 			ctx.globalAlpha = old;
 		}
 	}
@@ -675,4 +717,20 @@ class Sprite {
 		return name == null ? c : name + "(" + c + ")";
 	}
 
+	// ---- additional methods for containers (h2d.Flow)
+
+	/**
+		This is called by our children if we have defined their parentContainer when they get resized
+	**/
+	function contentChanged( s : Sprite ) {
+	}
+
+	/**
+		This can be called by a parent container to constraint the size of its children.
+		Negative value mean that constraint is to be disable.
+	**/
+	function constraintSize( maxWidth : Float, maxHeight : Float ) {
+	}
+
 }
+

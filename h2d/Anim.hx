@@ -6,6 +6,12 @@ class Anim extends Drawable {
 	public var currentFrame(get,set) : Float;
 	public var speed : Float;
 	public var loop : Bool = true;
+	
+	/**
+		When enable, fading will draw two consecutive frames with alpha transition between
+		them instead of directly switching from one to another when it reaches the next frame.
+		This can be used to have smoother animation on some effects.
+	**/
 	public var fading : Bool = false;
 	var curFrame : Float;
 
@@ -47,7 +53,10 @@ class Anim extends Drawable {
 		if( curFrame < frames.length )
 			return;
 		if( loop ) {
-			curFrame %= frames.length;
+			if( frames.length == 0 )
+				curFrame = 0;
+			else
+				curFrame %= frames.length;
 			onAnimEnd();
 		} else if( curFrame >= frames.length ) {
 			curFrame = frames.length;

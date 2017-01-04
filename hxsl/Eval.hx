@@ -11,6 +11,7 @@ class Eval {
 	public var varMap : Map<TVar,TVar>;
 	public var inlineCalls : Bool;
 	public var unrollLoops : Bool;
+	public var eliminateConditionals : Bool;
 	var constants : Map<TVar,TExprDef>;
 	var funMap : Map<TVar,TFunction>;
 	var curFun : TFunction;
@@ -157,6 +158,10 @@ class Eval {
 	function evalCall( g : TGlobal, args : Array<TExpr> ) {
 		return switch( [g,args] ) {
 		case [ToFloat, [ { e : TConst(CInt(i)) } ]]: TConst(CFloat(i));
+		case [Trace, args]:
+			for( a in args )
+				haxe.Log.trace(Printer.toString(a), { fileName : a.p.file, lineNumber : 0, className : null, methodName : null });
+			TBlock([]);
 		default: null;
 		}
 	}
@@ -356,8 +361,8 @@ class Eval {
 			switch( econd.e ) {
 			case TConst(CBool(b)): b ? evalExpr(eif, isVal).e : eelse == null ? TConst(CNull) : evalExpr(eelse, isVal).e;
 			default:
-				if( isVal && eelse != null )
-					TCall( { e : TGlobal(Mix), t : e.t, p : e.p }, [eif, eelse, { e : TCall( { e : TGlobal(ToFloat), t : TFun([]), p : econd.p }, [econd]), t : TFloat, p : e.p } ]);
+				if( isVal && eelse != null && eliminateConditionals )
+					TCall( { e : TGlobal(Mix), t : e.t, p : e.p }, [evalExpr(eelse,true), evalExpr(eif,true), { e : TCall( { e : TGlobal(ToFloat), t : TFun([]), p : econd.p }, [econd]), t : TFloat, p : e.p } ]);
 				else
 					TIf(econd, evalExpr(eif,isVal), eelse == null ? null : evalExpr(eelse,isVal));
 			}
@@ -384,8 +389,58 @@ class Eval {
 			}
 			varMap.remove(v);
 			e;
+		case TWhile(cond, loop, normalWhile):
+			var cond = evalExpr(cond);
+			var loop = evalExpr(loop, false);
+			TWhile(cond, loop, normalWhile);
+		case TSwitch(e, cases, def):
+			var e = evalExpr(e);
+			var cases = [for( c in cases ) { values : [for( v in c.values ) evalExpr(v)], expr : evalExpr(c.expr, isVal) }];
+			var def = def == null ? null : evalExpr(def, isVal);
+			var hasCase = false;
+			switch( e.e ) {
+			case TConst(c):
+				switch( c ) {
+				case CInt(val):
+					for( c in cases ) {
+						for( v in c.values )
+							switch( v.e ) {
+							case TConst(cst):
+								switch( cst ) {
+								case CInt(k) if( k == val ): return c.expr;
+								case CFloat(k) if( k == val ): return c.expr;
+								default:
+								}
+							default:
+								hasCase = true;
+							}
+					}
+				default:
+					throw "Unsupported switch constant "+c;
+				}
+			default:
+				hasCase = true;
+			}
+			if( hasCase )
+				TSwitch(e, cases, def);
+			else if( def == null )
+				TBlock([]);
+			else
+				def.e;
 		case TArrayDecl(el):
 			TArrayDecl([for( e in el ) evalExpr(e)]);
+		case TMeta(name, args, e):
+			var e2;
+			switch( name ) {
+			case "unroll":
+				var old = unrollLoops;
+				unrollLoops = true;
+				e2 = evalExpr(e, isVal);
+				unrollLoops = false;
+			default:
+				e2 = evalExpr(e, isVal);
+			}
+			TMeta(name, args, e2);
 		};
 		return { e : d, t : e.t, p : e.p }
 	}

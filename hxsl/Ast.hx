@@ -128,6 +128,9 @@ enum ExprDef {
 	EContinue;
 	EArray( e : Expr, eindex : Expr );
 	EArrayDecl( el : Array<Expr> );
+	ESwitch( e : Expr, cases : Array<{ values : Array<Expr>, expr:Expr }>, def : Null<Expr> );
+	EWhile( cond : Expr, loop : Expr, normalWhile : Bool );
+	EMeta( name : String, args : Array<Expr>, e : Expr );
 }
 
 typedef TVar = {
@@ -223,6 +226,10 @@ enum TGlobal {
 	DFdx;
 	DFdy;
 	Fwidth;
+	TextureCubeLod;
+	Texture2DLod;
+	// debug
+	Trace;
 }
 
 enum Component {
@@ -251,6 +258,9 @@ enum TExprDef {
 	TBreak;
 	TArray( e : TExpr, index : TExpr );
 	TArrayDecl( el : Array<TExpr> );
+	TSwitch( e : TExpr, cases : Array<{ values : Array<TExpr>, expr:TExpr }>, def : Null<TExpr> );
+	TWhile( e : TExpr, loop : TExpr, normalWhile : Bool );
+	TMeta( m : String, args : Array<Const>, e : TExpr );
 }
 
 typedef TExpr = { e : TExprDef, t : Type, p : Position }
@@ -359,6 +369,46 @@ class Tools {
 		};
 	}
 
+	public static function hasSideEffect( e : TExpr ) {
+		switch( e.e ) {
+		case TParenthesis(e):
+			return hasSideEffect(e);
+		case TBlock(el), TArrayDecl(el):
+			for( e in el )
+				if( hasSideEffect(e) )
+					return true;
+			return false;
+		case TBinop(OpAssign | OpAssignOp(_), _, _):
+			return true;
+		case TBinop(_, e1, e2):
+			return hasSideEffect(e1) || hasSideEffect(e2);
+		case TUnop(_, e1):
+			return hasSideEffect(e1);
+		case TSwiz(e, _):
+			return hasSideEffect(e);
+		case TIf(econd, eif, eelse):
+			return hasSideEffect(econd) || hasSideEffect(eif) || (eelse != null && hasSideEffect(eelse));
+		case TFor(_, it, loop):
+			return hasSideEffect(it) || hasSideEffect(loop);
+		case TArray(e, index):
+			return hasSideEffect(e) || hasSideEffect(index);
+		case TConst(_), TVar(_), TGlobal(_):
+			return false;
+		case TVarDecl(_), TCall(_), TDiscard, TContinue, TBreak, TReturn(_):
+			return true;
+		case TSwitch(e, cases, def):
+			for( c in cases ) {
+				for( v in c.values ) if( hasSideEffect(v) ) return true;
+				if( hasSideEffect(c.expr) ) return true;
+			}
+			return hasSideEffect(e) || (def != null && hasSideEffect(def));
+		case TWhile(e, loop, _):
+			return hasSideEffect(e) || hasSideEffect(loop);
+		case TMeta(_, _, e):
+			return hasSideEffect(e);
+		}
+	}
+
 	public static function iter( e : TExpr, f : TExpr -> Void ) {
 		switch( e.e ) {
 		case TParenthesis(e): f(e);
@@ -373,7 +423,18 @@ class Tools {
 		case TFor(_, it, loop): f(it); f(loop);
 		case TArray(e, index): f(e); f(index);
 		case TArrayDecl(el): for( e in el ) f(e);
-		case TConst(_),TVar(_),TGlobal(_), TDiscard, TContinue, TBreak:
+		case TSwitch(e, cases, def):
+			f(e);
+			for( c in cases ) {
+				for( v in c.values ) f(v);
+				f(c.expr);
+			}
+			if( def != null ) f(def);
+		case TWhile(e, loop, _):
+			f(e);
+			f(loop);
+		case TConst(_), TVar(_), TGlobal(_), TDiscard, TContinue, TBreak:
+		case TMeta(_, _, e): f(e);
 		}
 	}
 
@@ -391,7 +452,10 @@ class Tools {
 		case TFor(v, it, loop): TFor(v, f(it), f(loop));
 		case TArray(e, index): TArray(f(e), f(index));
 		case TArrayDecl(el): TArrayDecl([for( e in el ) f(e)]);
+		case TSwitch(e, cases, def): TSwitch(f(e), [for( c in cases ) { values : [for( v in c.values ) f(v)], expr : f(c.expr) }], def == null ? null : f(def));
+		case TWhile(e, loop, normalWhile): TWhile(f(e), f(loop), normalWhile);
 		case TConst(_), TVar(_), TGlobal(_), TDiscard, TContinue, TBreak: e.e;
+		case TMeta(m, args, e): TMeta(m, args, f(e)); // don't map args
 		}
 		return { e : ed, t : e.t, p : e.p };
 	}

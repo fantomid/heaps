@@ -127,6 +127,16 @@ class Printer {
 
 	static var SWIZ = ["x", "y", "z", "w"];
 
+	function addConst( c : Const ) {
+		add(switch(c) {
+		case CNull: "null";
+		case CBool(b): b;
+		case CInt(i): i;
+		case CFloat(f): f;
+		case CString(s): '"' + s + '"';
+		});
+	}
+
 	function addExpr( e : TExpr, tabs : String ) : Void {
 		switch( e.e ) {
 		case TVar(v):
@@ -169,10 +179,38 @@ class Printer {
 			}
 			add(")");
 		case TFor(v, it, loop):
-			add("for( " + v.name + " in ");
+			add("for( ");
+			addVarName(v);
+			add(" in ");
 			addExpr(it, tabs);
-			add(") ");
+			add(" ) ");
 			addExpr(loop, tabs);
+		case TSwitch(e, cases, def):
+			add("switch( ");
+			addExpr(e, tabs);
+			add(") {");
+			var old = tabs;
+			for( c in cases ) {
+				add("\n" + tabs);
+				add("case ");
+				var first = true;
+				for( v in c.values ) {
+					if( first ) first = false else add(", ");
+					addExpr(v, tabs);
+				}
+				tabs += "\t";
+				add(":\n"+tabs);
+				addExpr(c.expr, tabs);
+				tabs = old;
+			}
+			if( def != null ) {
+				add("\n" + tabs);
+				tabs += "\t";
+				add("default:\n" + tabs);
+				addExpr(def, tabs);
+				tabs = old;
+			}
+			add("\n" + tabs + "}");
 		case TContinue:
 			add("continue");
 		case TBreak:
@@ -214,13 +252,7 @@ class Printer {
 			addExpr(e, tabs);
 			add(")");
 		case TConst(c):
-			add(switch(c) {
-			case CNull: "null";
-			case CBool(b): b;
-			case CInt(i): i;
-			case CFloat(f): f;
-			case CString(s): '"' + s + '"';
-			});
+			addConst(c);
 		case TArrayDecl(el):
 			add("[");
 			var first = true;
@@ -229,7 +261,39 @@ class Printer {
 				addExpr(e,tabs);
 			}
 			add("]");
+		case TWhile(e, loop, false):
+			var old = tabs;
+			tabs += "\t";
+			add("do {\n" + tabs);
+			addExpr(loop,tabs);
+			tabs = old;
+			add("\n" + tabs + "} while( ");
+			addExpr(e,tabs);
+			add(" )");
+		case TWhile(e, loop, _):
+			add("while( ");
+			addExpr(e, tabs);
+			var old = tabs;
+			tabs += "\t";
+			add(" ) {\n" + tabs);
+			addExpr(loop,tabs);
+			tabs = old;
+			add("\n" + tabs + "}");
+		case TMeta(m, args, e):
+			add(m);
+			if( args.length > 0 ) {
+				add("(");
+				var first = true;
+				for( c in args ) {
+					if( first ) first = false else add(", ");
+					addConst(c);
+				}
+				add(")");
+			}
+			add(" ");
+			addExpr(e, tabs);
 		}
+
 	}
 
 	public static function opStr( op : Ast.Binop ) {

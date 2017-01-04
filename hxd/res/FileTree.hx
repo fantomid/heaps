@@ -18,6 +18,7 @@ class FileTree {
 	var isJS : Bool;
 	var isCPP : Bool;
 	var embedTypes : Array<String>;
+	var checkTmp : Bool;
 
 	public function new(dir) {
 		this.path = resolvePath(dir);
@@ -54,12 +55,10 @@ class FileTree {
 
 	public function embed(options:EmbedOptions) {
 		if( options == null ) options = { };
-		var needTmp = options.compressSounds;
 		if( options.tmpDir == null ) options.tmpDir = path + "/.tmp/";
 		// if the OGG library is detected, compress as OGG by default, unless compressAsMp3 is set
 		if( options.compressAsMp3 == null ) options.compressAsMp3 = options.compressSounds && !Context.defined("stb_ogg_sound");
-		if( needTmp && !sys.FileSystem.exists(options.tmpDir) )
-			sys.FileSystem.createDirectory(options.tmpDir);
+		checkTmp = false;
 		this.options = options;
 		embedTypes = [];
 		return { tree : embedRec(""), types : embedTypes };
@@ -99,6 +98,11 @@ class FileTree {
 	}
 
 	function getTime( file : String ) {
+		if( !checkTmp ) {
+			if( !sys.FileSystem.exists(options.tmpDir) )
+				sys.FileSystem.createDirectory(options.tmpDir);
+			checkTmp = true;
+		}
 		return try sys.FileSystem.stat(file).mtime.getTime() catch( e : Dynamic ) -1.;
 	}
 
@@ -388,6 +392,8 @@ class FileTree {
 			return { e : macro loader.loadTiledMap($epath), t : macro : hxd.res.TiledMap };
 		case "atlas":
 			return { e : macro loader.loadAtlas($epath), t : macro : hxd.res.Atlas };
+		case "grd":
+			return { e : macro loader.loadGradients($epath), t : macro : hxd.res.Gradients };
 		default:
 			return { e : macro loader.loadData($epath), t : macro : hxd.res.Resource };
 		}

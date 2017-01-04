@@ -75,9 +75,8 @@ class Image extends Resource {
 			}
 		case 0x5089: // PNG
 			format = Png;
-			var TMP = hxd.impl.Tmp.getBytes(256);
 			f.bigEndian = true;
-			f.readBytes(TMP, 0, 6);
+			f.skip(6); // header
 			while( true ) {
 				var dataLen = f.readInt32();
 				if( f.readInt32() == ('I'.code << 24) | ('H'.code << 16) | ('D'.code << 8) | 'R'.code ) {
@@ -85,16 +84,8 @@ class Image extends Resource {
 					height = f.readInt32();
 					break;
 				}
-				// skip data
-				while( dataLen > 0 ) {
-					var k = dataLen > TMP.length ? TMP.length : dataLen;
-					f.readBytes(TMP, 0, k);
-					dataLen -= k;
-				}
-				var crc = f.readInt32();
+				f.skip(dataLen + 4); // CRC
 			}
-			hxd.impl.Tmp.saveBytes(TMP);
-
 		case 0x4947: // GIF
 			format = Gif;
 			f.readInt32(); // skip
@@ -128,6 +119,10 @@ class Image extends Resource {
 			// native PNG loader is faster
 			var i = lime.graphics.Image.fromBytes( bytes );
 			pixels = new Pixels(inf.width, inf.height, i.data.toBytes(), RGBA );
+			#elseif hl
+			if( fmt == null ) fmt = BGRA;
+			pixels = decodePNG(bytes, inf.width, inf.height, fmt, flipY);
+			if( pixels == null ) throw "Failed to decode JPG " + entry.path;
 			#else
 			var png = new format.png.Reader(new haxe.io.BytesInput(bytes));
 			png.checkCRC = false;
@@ -157,7 +152,7 @@ class Image extends Resource {
 			pixels = decodeJPG(bytes, inf.width, inf.height, fmt, flipY);
 			if( pixels == null ) throw "Failed to decode JPG " + entry.path;
 			#else
-			var p = NanoJpeg.decode(bytes);
+			var p = try NanoJpeg.decode(bytes) catch( e : Dynamic ) throw "Failed to decode JPG " + entry.path + " (" + e+")";
 			pixels = new Pixels(p.width, p.height, p.pixels, BGRA);
 			#end
 		default:
@@ -173,7 +168,7 @@ class Image extends Resource {
 		if( flipY != null ) pixels.setFlip(flipY);
 		return pixels;
 	}
-	
+
 	#if hl
 	static function decodeJPG( src : haxe.io.Bytes, width : Int, height : Int, fmt : hxd.PixelFormat, flipY : Bool ) {
 		var ifmt : hl.Format.PixelFormat = switch( fmt ) {
@@ -191,7 +186,25 @@ class Image extends Resource {
 		}
 		var pix = new hxd.Pixels(width, height, dst, fmt);
 		if( flipY ) pix.flags.set(FlipY);
-		pix.convert(fmt);
+		return pix;
+	}
+
+	static function decodePNG( src : haxe.io.Bytes, width : Int, height : Int, fmt : hxd.PixelFormat, flipY : Bool ) {
+		var ifmt : hl.Format.PixelFormat = switch( fmt ) {
+		case RGBA: RGBA;
+		case BGRA: BGRA;
+		case ARGB: ARGB;
+		default:
+			fmt = BGRA;
+			BGRA;
+		};
+		var dst = hxd.impl.Tmp.getBytes(width * height * 4);
+		if( !hl.Format.decodePNG(src.getData(), src.length, dst.getData(), width, height, width * 4, ifmt, (flipY?1:0)) ) {
+			hxd.impl.Tmp.saveBytes(dst);
+			return null;
+		}
+		var pix = new hxd.Pixels(width, height, dst, fmt);
+		if( flipY ) pix.flags.set(FlipY);
 		return pix;
 	}
 	#end

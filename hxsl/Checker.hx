@@ -30,8 +30,6 @@ class Checker {
 
 	public function new() {
 		globals = new Map();
-		inline function g(gl:TGlobal, vars) {
-		}
 		var genType = [TFloat, vec2, vec3, vec4];
 		var baseType = [TFloat, TBool, TInt];
 		var genFloat = [for( t in genType ) { args : [ { name : "value", type : t } ], ret : t } ];
@@ -56,9 +54,13 @@ class Checker {
 			case Cross:
 				[ { args : [ { name : "a", type : vec3 }, { name : "b", type : vec3 } ], ret : vec3 } ];
 			case Texture2D:
-				[ { args : [ { name : "tex", type : TSampler2D }, { name : "b", type : vec2 } ], ret : vec4 } ];
+				[ { args : [ { name : "tex", type : TSampler2D }, { name : "uv", type : vec2 } ], ret : vec4 } ];
+			case Texture2DLod:
+				[ { args : [ { name : "tex", type : TSampler2D }, { name : "uv", type : vec2 }, { name : "lod", type : TFloat } ], ret : vec4 } ];
 			case TextureCube:
-				[ { args : [ { name : "tex", type : TSamplerCube }, { name : "b", type : vec3 } ], ret : vec4 } ];
+				[ { args : [ { name : "tex", type : TSamplerCube }, { name : "normal", type : vec3 } ], ret : vec4 } ];
+			case TextureCubeLod:
+				[ { args : [ { name : "tex", type : TSamplerCube }, { name : "normal", type : vec3 }, { name : "lod", type : TFloat } ], ret : vec4 } ];
 			case ToInt:
 				[for( t in baseType ) { args : [ { name : "value", type : t } ], ret : TInt } ];
 			case ToFloat:
@@ -107,6 +109,8 @@ class Checker {
 				[ { args : [ { name : "value", type : TVec(4, VFloat) } ], ret : TVec(3, VFloat) } ];
 			case PackNormal:
 				[ { args : [ { name : "value", type : TVec(3, VFloat) } ], ret : TVec(4, VFloat) } ];
+			case Trace:
+				[];
 			}
 			if( def != null )
 				globals.set(g.toString(), { t : TFun(def), g : g } );
@@ -258,6 +262,14 @@ class Checker {
 			case CFloat(_): TFloat;
 			};
 			TConst(c);
+		case EMeta(name, args, e):
+			var e = typeExpr(e, with);
+			type = e.t;
+			TMeta(name, [for( c in args ) switch( c.expr ) {
+				case EConst(c): c;
+				case EIdent(i): CString(i); // convert ident to string
+				default: error("Metadata parameter should be constant", c.pos);
+			}], e);
 		case EBlock(el):
 			var old = saveVars();
 			var el = el.copy(), tl = [];
@@ -459,12 +471,23 @@ class Checker {
 				};
 				var old = vars.get(v.name);
 				vars.set(v.name, v);
+				var oldL = inLoop;
+				inLoop = true;
 				var block = typeExpr(block, NoValue);
+				inLoop = oldL;
 				if( old == null ) vars.remove(v.name) else vars.set(v.name, old);
 				TFor(v, it, block);
 			default:
 				error("Cannot iterate on " + it.t.toString(), it.p);
 			}
+		case EWhile(cond, loop, normalWhile):
+			type = TVoid;
+			var cond = typeWith(cond, TBool);
+			var oldL = inLoop;
+			inLoop = true;
+			var loop = typeExpr(loop, NoValue);
+			inLoop = oldL;
+			TWhile(cond, loop, normalWhile);
 		case EContinue:
 			if( !inLoop ) error("Continue outside loop", e.pos);
 			type = TVoid;
@@ -502,6 +525,12 @@ class Checker {
 				unifyExpr(el[i], t);
 			type = TArray(t, SConst(el.length));
 			TArrayDecl(el);
+		case ESwitch(e, cases, def):
+			var et = typeExpr(e, Value);
+			var cases = [for( c in cases ) { values : [for( v in c.values ) typeWith(v, et.t)], expr : typeExpr(c.expr, with) }];
+			var def = def == null ? null : typeExpr(def, with);
+			type = TVoid;
+			TSwitch(et, cases, def);
 		}
 		if( type == null ) throw "assert";
 		return { e : ed, t : type, p : e.pos };
@@ -840,6 +869,8 @@ class Checker {
 			default:
 				error("Cannot apply " + g.toString() + " to these parameters", pos);
 			}
+		case Trace:
+			type = TVoid;
 		default:
 		}
 		if( type == null )
@@ -983,6 +1014,10 @@ class Checker {
 			unifyExpr(e1, TInt);
 			unifyExpr(e2, TInt);
 			TArray(TInt, SConst(0));
+		case OpShl, OpShr, OpUShr, OpOr, OpAnd, OpXor:
+			unifyExpr(e1, TInt);
+			unifyExpr(e2, TInt);
+			TInt;
 		default:
 			error("Unsupported operator " + op, pos);
 		}

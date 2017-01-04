@@ -34,8 +34,11 @@ class GlslOut {
 	var decls : Array<String>;
 	var isVertex : Bool;
 	var allNames : Map<String, Int>;
+	var outIndexes : Map<Int, Int>;
 	public var varNames : Map<Int,String>;
 	public var flipY : Bool;
+	public var glES : Bool;
+	public var version : Null<Int>;
 
 	public function new() {
 		varNames = new Map();
@@ -54,7 +57,10 @@ class GlslOut {
 	function decl( s : String ) {
 		for( d in decls )
 			if( d == s ) return;
-		decls.push(s);
+		if( s.charCodeAt(0) == '#'.code )
+			decls.unshift(s);
+		else
+			decls.push(s);
 	}
 
 	function addType( t : Type ) {
@@ -156,9 +162,22 @@ class GlslOut {
 			buf = tmp;
 			add(name);
 			add("()");
+		case TIf(econd, eif, eelse):
+			add("( ");
+			addValue(econd, tabs);
+			add(" ) ? ");
+			addValue(eif, tabs);
+			add(" : ");
+			addValue(eelse, tabs);
+		case TMeta(_, _, e):
+			addValue(e, tabs);
 		default:
 			addExpr(e, tabs);
 		}
+	}
+
+	function addBlock( e : TExpr, tabs : String ) {
+		addExpr(e, tabs);
 	}
 
 	function addExpr( e : TExpr, tabs : String ) {
@@ -194,7 +213,12 @@ class GlslOut {
 			case Texture2D:
 				// convert S/T (bottom left) to U/V (top left)
 				// we don't use 1. because of pixel rounding (fixes artifacts in blur)
-				decl("vec4 _texture2D( sampler2D t, vec2 v ) { return texture2D(t,vec2(v.x,"+(flipY?"0.999999-v.y":"v.y")+")); }");
+				decl('vec4 _texture2D( sampler2D t, vec2 v ) { return ${glES?"texture2D":"texture"}(t,vec2(v.x,${flipY?"0.999999-v.y":"v.y"})); }');
+			case TextureCube:
+				if( !glES ) {
+					add("texture");
+					return;
+				}
 			default:
 			}
 			add(GLOBALS.get(g));
@@ -208,7 +232,7 @@ class GlslOut {
 			for( e in el ) {
 				add(t2);
 				addExpr(e, t2);
-				add(";\n");
+				newLine(e);
 			}
 			add(tabs);
 			add("}");
@@ -232,6 +256,13 @@ class GlslOut {
 					add(" = ");
 				}
 				add("mod(");
+				addValue(e1, tabs);
+				add(",");
+				addValue(e2, tabs);
+				add(")");
+			case [OpUShr, _, _]:
+				decl("int _ushr( int i, int j ) { return int(uint(i) >> uint(j)); }");
+				add("_ushr(");
 				addValue(e1, tabs);
 				add(",");
 				addValue(e2, tabs);
@@ -337,6 +368,7 @@ class GlslOut {
 			add(") ");
 			addExpr(eif, tabs);
 			if( eelse != null ) {
+				if( !isBlock(eif) ) add(";");
 				add(" else ");
 				addExpr(eelse, tabs);
 			}
@@ -350,7 +382,34 @@ class GlslOut {
 				addValue(e, tabs);
 			}
 		case TFor(v, it, loop):
-			add("for(...)");
+			locals.set(v.id, v);
+			switch( it.e ) {
+			case TBinop(OpInterval, e1, e2):
+				add("for(");
+				add(v.name+"=");
+				addValue(e1,tabs);
+				add(";"+v.name+"<");
+				addValue(e2,tabs);
+				add(";" + v.name+"++) ");
+				addBlock(loop, tabs);
+			default:
+				throw "assert";
+			}
+		case TWhile(e, loop, false):
+			var old = tabs;
+			tabs += "\t";
+			add("do ");
+			addBlock(loop,tabs);
+			add(" while( ");
+			addValue(e,tabs);
+			add(" )");
+		case TWhile(e, loop, _):
+			add("while( ");
+			addValue(e, tabs);
+			add(" ) ");
+			addBlock(loop,tabs);
+		case TSwitch(_):
+			add("switch(...)");
 		case TContinue:
 			add("continue");
 		case TBreak:
@@ -368,12 +427,21 @@ class GlslOut {
 				addValue(e,tabs);
 			}
 			add("]");
+		case TMeta(_, _, e):
+			addExpr(e, tabs);
 		}
 	}
 
 	function varName( v : TVar ) {
-		if( v.kind == Output )
-			return isVertex ? "gl_Position" : "gl_FragColor";
+		if( v.kind == Output ) {
+			if( isVertex )
+				return "gl_Position";
+			if( glES ) {
+				if( outIndexes == null )
+					return "gl_FragColor";
+				return 'gl_FragData[${outIndexes.get(v.id)}]';
+			}
+		}
 		var n = varNames.get(v.id);
 		if( n != null )
 			return n;
@@ -392,34 +460,54 @@ class GlslOut {
 		return n;
 	}
 
+	function newLine( e : TExpr ) {
+		if( isBlock(e) )
+			add("\n");
+		else
+			add(";\n");
+	}
+
+	function isBlock( e : TExpr ) {
+		switch( e.e ) {
+		case TFor(_, _, loop), TWhile(_,loop,true):
+			return isBlock(loop);
+		case TBlock(_):
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	public function run( s : ShaderData ) {
 		locals = new Map();
 		decls = [];
 		buf = new StringBuf();
 		exprValues = [];
 
-		//#if GL_ES_VERSION_2_0  would be the test to use at compilation time, but would require a GL context to call glGetString (GL_SHADING_LANGUAGE_VERSION)
-		//#ifdef GL_ES is to test in the shader itself but #version  muse be declared first
-		#if((cpp && mobile)||js)
-		decls.push("#version 100");
-		#else
-		decls.push("#version 130");
-		#end
-		decls.push("precision mediump float;");
+		decl("precision mediump float;");
 
 		if( s.funs.length != 1 ) throw "assert";
 		var f = s.funs[0];
 		isVertex = f.kind == Vertex;
 
+		var outIndex = 0;
+		outIndexes = new Map();
 		for( v in s.vars ) {
 			switch( v.kind ) {
 			case Param, Global:
 				add("uniform ");
 			case Input:
-				add("attribute ");
+				add( glES ? "attribute " : "in ");
 			case Var:
-				add("varying ");
-			case Function, Output: continue;
+				add( glES ? "varying " : (isVertex ? "out " : "in "));
+			case Output:
+				if( glES ) {
+					outIndexes.set(v.id, outIndex++);
+					continue;
+				}
+				add("out ");
+			case Function:
+				continue;
 			case Local:
 			}
 			if( v.qualifiers != null )
@@ -438,6 +526,11 @@ class GlslOut {
 		}
 		add("\n");
 
+		if( outIndex < 2 )
+			outIndexes = null;
+		else if( !isVertex && glES )
+			decl("#extension GL_EXT_draw_buffers : enable");
+
 		var tmp = buf;
 		buf = new StringBuf();
 		add("void main(void) {\n");
@@ -446,7 +539,7 @@ class GlslOut {
 			for( e in el ) {
 				add("\t");
 				addExpr(e, "\t");
-				add(";\n");
+				newLine(e);
 			}
 		default:
 			addExpr(f.expr, "");
@@ -465,13 +558,25 @@ class GlslOut {
 			add(e);
 			add("\n\n");
 		}
+
+		if( version != null )
+			decl("#version " + version);
+		else if( glES )
+			decl("#version 100");
+		else
+			decl("#version 130"); // OpenGL 3.0
+
 		decls.push(buf.toString());
 		buf = null;
 		return decls.join("\n");
 	}
 
 	public static function toGlsl( s : ShaderData ) {
-		return new GlslOut().run(s);
+		var out = new GlslOut();
+		#if js
+		out.glES = true;
+		#end
+		return out.run(s);
 	}
 
 }

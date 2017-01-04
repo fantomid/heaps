@@ -11,6 +11,7 @@ class Scene extends Layers implements h3d.IDrawable implements hxd.SceneEvents.I
 
 	public var zoom(get, set) : Int;
 	public var defaultFilter(get, set) : Bool;
+	public var renderer(get, set) : RenderContext;
 
 	var fixedSize : Bool;
 	var interactive : Array<Interactive>;
@@ -57,6 +58,9 @@ class Scene extends Layers implements h3d.IDrawable implements hxd.SceneEvents.I
 		return v;
 	}
 
+	function get_renderer() return ctx;
+	function set_renderer(v) { ctx = v; return v; }
+
 	public function setFixedSize( w, h ) {
 		width = w;
 		height = h;
@@ -96,6 +100,15 @@ class Scene extends Layers implements h3d.IDrawable implements hxd.SceneEvents.I
 			l(event);
 			if( !event.propagate ) break;
 		}
+	}
+
+	public function isInteractiveVisible( i : hxd.SceneEvents.Interactive ) {
+		var s : Sprite = cast i;
+		while( s != null ) {
+			if( !s.visible ) return false;
+			s = s.parent;
+		}
+		return true;
 	}
 
 	public function getInteractive( x : Float, y : Float ) {
@@ -246,7 +259,12 @@ class Scene extends Layers implements h3d.IDrawable implements hxd.SceneEvents.I
 	}
 
 	public function removeEventListener( f : hxd.Event -> Void ) {
-		return eventListeners.remove(f);
+		for( e in eventListeners )
+			if( Reflect.compareMethods(e, f) ) {
+				eventListeners.remove(e);
+				return true;
+			}
+		return false;
 	}
 
 	public function startDrag( f : hxd.Event -> Void, ?onCancel : Void -> Void, ?refEvent : hxd.Event ) {
@@ -365,7 +383,7 @@ class Scene extends Layers implements h3d.IDrawable implements hxd.SceneEvents.I
 		sync(ctx);
 		if( childs.length == 0 ) return;
 		ctx.begin();
-		drawRec(ctx);
+		ctx.drawScene();
 		ctx.end();
 	}
 

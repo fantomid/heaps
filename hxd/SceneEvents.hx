@@ -5,6 +5,7 @@ interface InteractiveScene {
 	public function handleEvent( e : Event, last : Interactive ) : Interactive;
 	public function dispatchEvent( e : Event, to : Interactive ) : Void;
 	public function dispatchListeners( e : Event ) : Void;
+	public function isInteractiveVisible( i : Interactive ) : Bool;
 }
 
 interface Interactive {
@@ -27,7 +28,7 @@ class SceneEvents {
 	var lastTouch = 0;
 
 	var focusLost = new hxd.Event(EFocusLost);
-	var fakeMove = new hxd.Event(EMove);
+	var checkPos = new hxd.Event(ECheck);
 	var onOut = new hxd.Event(EOut);
 
 	public function new() {
@@ -96,12 +97,15 @@ class SceneEvents {
 		case ERelease: checkPush = true;
 		case EKeyUp, EKeyDown, EWheel:
 			if( currentFocus != null ) {
-				event.relX = event.relY = 0;
-				currentFocus.handleEvent(event);
-				event.relX = oldX;
-				event.relY = oldY;
-				if( !event.propagate )
-					return;
+				var s = currentFocus.getInteractiveScene();
+				if( s != null && s.isInteractiveVisible(currentFocus) ) {
+					event.relX = event.relY = 0;
+					currentFocus.handleEvent(event);
+					event.relX = oldX;
+					event.relY = oldY;
+					if( !event.propagate )
+						return;
+				}
 			}
 		default:
 		}
@@ -171,7 +175,7 @@ class SceneEvents {
 				currentOver = null;
 		}
 
-		if( !handled && event != fakeMove ) {
+		if( !handled && event != checkPos ) {
 			if( event.kind == EPush )
 				pushList.push(null);
 			else if( event.kind == ERelease )
@@ -236,12 +240,12 @@ class SceneEvents {
 		}
 
 		if( !checkMoved && currentDrag == null ) {
-			fakeMove.relX = mouseX;
-			fakeMove.relY = mouseY;
-			fakeMove.touchId = lastTouch;
-			fakeMove.cancel = false;
-			fakeMove.propagate = false;
-			emitEvent(fakeMove);
+			checkPos.relX = mouseX;
+			checkPos.relY = mouseY;
+			checkPos.touchId = lastTouch;
+			checkPos.cancel = false;
+			checkPos.propagate = false;
+			emitEvent(checkPos);
 		}
 	}
 
@@ -266,8 +270,8 @@ class SceneEvents {
 	function dispatchListeners( event : hxd.Event ) {
 		var ox = event.relX, oy = event.relY;
 		event.propagate = true;
-		event.cancel = false;
 		for( s in scenes ) {
+			event.cancel = false;
 			s.dispatchListeners(event);
 			event.relX = ox;
 			event.relY = oy;

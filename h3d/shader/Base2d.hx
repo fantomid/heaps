@@ -34,9 +34,12 @@ class Base2d extends hxsl.Shader {
 		@const var hasUVPos : Bool;
 		@param var uvPos : Vec4;
 
+		@const var killAlpha : Bool;
 		@const var pixelAlign : Bool;
 		@param var halfPixelInverse : Vec2;
 		@param var viewport : Vec4;
+
+		var outputPosition : Vec4;
 
 		function __init__() {
 			spritePosition = vec4(input.position, zValue, 1);
@@ -55,16 +58,20 @@ class Base2d extends hxsl.Shader {
 		function vertex() {
 			// transform from global to render texture coordinates
 			var tmp = vec3(absolutePosition.xy, 1);
-			absolutePosition.x = tmp.dot(filterMatrixA);
-			absolutePosition.y = tmp.dot(filterMatrixB);
+			outputPosition = vec4(
+				tmp.dot(filterMatrixA),
+				tmp.dot(filterMatrixB),
+				absolutePosition.zw
+			);
 			// transform to viewport
-			absolutePosition.xy = (absolutePosition.xy + viewport.xy) * viewport.zw;
+			outputPosition.xy = (outputPosition.xy + viewport.xy) * viewport.zw;
 			// http://msdn.microsoft.com/en-us/library/windows/desktop/bb219690(v=vs.85).aspx
-			if( pixelAlign ) absolutePosition.xy -= halfPixelInverse;
-			output.position = absolutePosition;
+			if( pixelAlign ) outputPosition.xy -= halfPixelInverse;
+			output.position = outputPosition;
 		}
 
 		function fragment() {
+			if( killAlpha && pixelColor.a < 0.001 ) discard;
 			output.color = pixelColor;
 		}
 

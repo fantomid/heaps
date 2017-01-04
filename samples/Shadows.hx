@@ -16,7 +16,7 @@ class Shadows extends hxd.App {
 		m.material.mainPass.enableLights = true;
 		m.material.shadows = true;
 
-		var sphere = new h3d.prim.Sphere(32,24);
+		var sphere = new h3d.prim.Sphere(1, 32, 24);
 		sphere.addNormals();
 		spheres  = [];
 		for( i in 0...15 ) {
@@ -34,14 +34,16 @@ class Shadows extends hxd.App {
 		s3d.lightSystem.ambientLight.set(0.5, 0.5, 0.5);
 
 		dir = new h3d.scene.DirLight(new h3d.Vector(-0.3, -0.2, -1), s3d);
-		s3d.lightSystem.shadowLight = dir;
-		
+		dir.enableSpecular = true;
+
 		shadow = cast(s3d.renderer.getPass("shadow"), h3d.pass.ShadowMap);
 		shadow.blur.passes = 3;
+
+		s3d.camera.pos.set(12, 12, 6);
+		new h3d.scene.CameraController(s3d).loadFromCamera();
 	}
 
 	override function update( dt : Float ) {
-		s3d.camera.pos.set(12, 12, 6);
 		time += dt * 0.01;
 		dir.direction.set(Math.cos(time), Math.sin(time) * 2, -1);
 	}

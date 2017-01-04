@@ -142,7 +142,7 @@ class MacroParser {
 				case ":import":
 					ECall({ expr : EIdent("import"), pos : m.pos }, [e2]);
 				default:
-					error("Qualifier only supported before 'var'", e.pos);
+					EMeta(m.name, [for( e in m.params ) parseExpr(e)], e2);
 				}
 			}
 		case EVars(vl):
@@ -218,6 +218,10 @@ class MacroParser {
 			EArray(parseExpr(e1), parseExpr(e2));
 		case EArrayDecl(el):
 			EArrayDecl([for( e in el ) parseExpr(e)]);
+		case ESwitch(e, cases, def):
+			ESwitch(parseExpr(e), [for( c in cases ) { expr : parseExpr(c.expr), values : [for( v in c.values ) parseExpr(v)] }], def == null ? null : parseExpr(def));
+		case EWhile(cond, e, normalWhile):
+			hxsl.ExprDef.EWhile(parseExpr(cond), parseExpr(e), normalWhile);
 		default:
 			null;
 		};
